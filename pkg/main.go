@@ -293,6 +293,8 @@ func Connect(server, username, password string, debug bool) error {
 	//name := "tun0"
 
 	ipRun("link", "set", "dev", name, "mtu", "1332")
+	ipRun("link", "set", "arp", "on", "dev", "tun0")
+	ipRun("link", "set", "multicast", "off", "dev", "tun0")
 	ipRun("addr", "add", clientIP, "peer", serverIP, "dev", name)
 	ipRun("link", "set", "dev", name, "up")
 	// for test purposes redirect only to "10.0.0.0/8" CIDR
