@@ -225,7 +225,7 @@ func Connect(server, username, password string, debug bool) error {
 	// TLS
 	//purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&Z=%s&ipv4=yes&hdlc_framing=no", server, favorite.Object.SessionID, favorite.Object.UrZ))
 	hostname := base64.StdEncoding.EncodeToString([]byte("my-hostname"))
-	purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s", server, favorite.Object.SessionID, hostname, favorite.Object.HDLCFraming, "yes", "yes", favorite.Object.UrZ))
+	purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s", server, favorite.Object.SessionID, hostname, favorite.Object.HDLCFraming, "yes", "no", favorite.Object.UrZ))
 	if err != nil {
 		return err
 	}
@@ -297,8 +297,10 @@ func Connect(server, username, password string, debug bool) error {
 	ipRun("link", "set", "multicast", "off", "dev", "tun0")
 	ipRun("addr", "add", clientIP, "peer", serverIP, "dev", name)
 	ipRun("link", "set", "dev", name, "up")
-	// for test purposes redirect only to "10.0.0.0/8" CIDR
+	ipRun("-6", "addr", "flush", "dev", name)
+	// for test purposes redirect only to "10.0.0.0/8" CIDR and google IP
 	ipRun("route", "add", "10.0.0.0/8", "via", clientIP, "proto", "unspec", "metric", "1", "dev", name)
+	ipRun("route", "add", "8.8.8.8", "via", clientIP, "proto", "unspec", "metric", "1", "dev", name)
 
 	// http->tun go routine
 	go func() {
@@ -308,10 +310,14 @@ func Connect(server, username, password string, debug bool) error {
 			if err != nil {
 				log.Fatalf("Fatal read http: %s", err)
 			}
+			// F5 sends back the sent package with 13 byte header
+			// cut off the 13 bytes header
+			// probably we need to parse this header and create a response to "activate" a connection
+			t := buf[13:n]
 			log.Printf("Read %d bytes from http:\n%s", n, hex.Dump(buf[:n]))
-			header, _ := ipv4.ParseHeader(buf[:n])
+			header, _ := ipv4.ParseHeader(t)
 			log.Printf("ipv4 from http: %+v", header)
-			n, err := iface.Write(buf[:n])
+			n, err := iface.Write(t)
 			if err != nil {
 				log.Printf("Fatal write to tun: %s", err)
 			}
@@ -326,10 +332,16 @@ func Connect(server, username, password string, debug bool) error {
 		if err != nil {
 			log.Fatalf("Fatal read tun: %s", err)
 		}
-		log.Printf("Read %d bytes from tun:\n%s", n, hex.Dump(buf[:n]))
-		header, _ := ipv4.ParseHeader(buf[:n])
+		// TODO: buf := new(bytes.Buffer) with binary.Write(buf, binary.BigEndian, uint16(n))
+		head := []byte{0xf5, 0x00, 0x00, byte(n)}
+		data := buf[:n]
+		var t []byte
+		t = append(t, head...)
+		t = append(t, data...)
+		log.Printf("Read %d bytes from tun:\n%s", n, hex.Dump(data))
+		header, _ := ipv4.ParseHeader(data)
 		log.Printf("ipv4 from tun: %+v", header)
-		n, err := conn.Write(buf[:n])
+		n, err := conn.Write(t)
 		if err != nil {
 			log.Printf("Fatal write to http: %s", err)
 		}
