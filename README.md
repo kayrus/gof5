@@ -16,7 +16,7 @@ Username and password will be used only, when `cookies` file doesn't contain pre
 
 Use `--close-session` flag to terminate an HTTPS VPN session on exit. Next startup will require a valid username/password.
 
-A `routes.yaml` file must be placed in the current directory with contents like:
+A `routes.yaml` file must be placed in the current working directory with contents like:
 
 ```yaml
 routes:

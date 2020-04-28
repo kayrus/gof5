@@ -15,6 +15,10 @@ const (
 	userAgent    = "Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.1a2pre) Gecko/2008073000 Shredder/3.0a2pre ThunderBrowse/3.2.1.8"
 )
 
+var (
+	currDir string
+)
+
 type Session struct {
 	Token         string `xml:"token"`
 	Version       string `xml:"version"`
