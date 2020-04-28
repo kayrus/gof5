@@ -39,7 +39,8 @@ func main() {
 		log.Fatalf("Program must be executed under root")
 	}
 
-	err := pkg.Connect(server, username, password, closeSession, debug)
+	pkg.SetDebug(debug)
+	err := pkg.Connect(server, username, password, closeSession)
 	if err != nil {
 		log.Fatal(err)
 	}

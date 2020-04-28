@@ -17,7 +17,12 @@ const (
 
 var (
 	currDir string
+	debug   bool
 )
+
+func SetDebug(d bool) {
+	debug = d
+}
 
 type Session struct {
 	Token         string `xml:"token"`
@@ -92,14 +97,16 @@ type Filter struct {
 	DstPort string `xml:"dst_port,attr"`
 }
 
-type Routes struct {
+type Config struct {
+	DNS    []string     `yaml:"dns"`
 	Routes []*net.IPNet `yaml:"-"`
 }
 
-func (r *Routes) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	type tmp Routes
+func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type tmp Config
 	var s struct {
 		tmp
+		DNS    []string `yaml:"dns"`
 		Routes []string `yaml:"routes"`
 	}
 
@@ -108,7 +115,8 @@ func (r *Routes) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
-	*r = Routes(s.tmp)
+	*r = Config(s.tmp)
+	r.DNS = s.DNS
 
 	for _, v := range s.Routes {
 		// TODO: change logic?

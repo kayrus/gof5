@@ -19,6 +19,12 @@ Use `--close-session` flag to terminate an HTTPS VPN session on exit. Next start
 A `routes.yaml` file must be placed in the current working directory with contents like:
 
 ```yaml
+# experimental
+# dns enables internal dns proxy, which is not stable enough
+# omit "dns" to disable DNS proxy
+dns:
+- corp.int.
+- corp.
 routes:
 - 1.2.3.4
 - 1.2.3.5/32

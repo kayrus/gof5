@@ -138,24 +138,24 @@ func getConnectionOptions(c *http.Client, server string, profile string) (*Favor
 	return &favorite, nil
 }
 
-func readRoutes() (*Routes, error) {
+func readConfig() (*Config, error) {
 	// read routes file
 	raw, err := ioutil.ReadFile(path.Join(currDir, routesConfig))
 	if err != nil {
 		return nil, fmt.Errorf("cannot read %s config: %s", routesConfig, err)
 	}
 
-	var cidrs Routes
-	err = yaml.Unmarshal(raw, &cidrs)
+	var config Config
+	err = yaml.Unmarshal(raw, &config)
 	if err != nil {
 		return nil, fmt.Errorf("cannot parse %s file: %v", routesConfig, err)
 	}
 
-	return &cidrs, nil
+	return &config, nil
 }
 
 // http->tun
-func httpToTun(conn *tls.Conn, pppd *os.File, errChan chan error, debug bool) {
+func httpToTun(conn *tls.Conn, pppd *os.File, errChan chan error) {
 	buf := make([]byte, 1500)
 	for {
 		rn, err := conn.Read(buf)
@@ -178,7 +178,7 @@ func httpToTun(conn *tls.Conn, pppd *os.File, errChan chan error, debug bool) {
 }
 
 // tun->http
-func tunToHttp(conn *tls.Conn, pppd *os.File, errChan chan error, debug bool) {
+func tunToHttp(conn *tls.Conn, pppd *os.File, errChan chan error) {
 	buf := make([]byte, 1500)
 	for {
 		rn, err := pppd.Read(buf)
@@ -200,7 +200,7 @@ func tunToHttp(conn *tls.Conn, pppd *os.File, errChan chan error, debug bool) {
 	}
 }
 
-func Connect(server, username, password string, closeSession bool, debug bool) error {
+func Connect(server, username, password string, closeSession bool) error {
 	u, err := url.Parse(fmt.Sprintf("https://%s", server))
 	if err != nil {
 		return fmt.Errorf("failed to parse server hostname: %s", err)
@@ -213,7 +213,7 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 	}
 
 	// read custom routes
-	cidrs, err := readRoutes()
+	config, err := readConfig()
 	if err != nil {
 		return err
 	}
@@ -436,7 +436,17 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 
 		// define DNS servers, provided by F5
 		log.Printf("Setting %s", resolvPath)
-		dns := "nameserver " + strings.Join(favorite.Object.DNS, "\nnameserver ") + "\n"
+		dnsSuffixes = config.DNS
+		servers = favorite.Object.DNS
+		var dns string
+		if len(dnsSuffixes) == 0 {
+			dns = "# created by gof5 VPN client" +
+				"nameserver " + strings.Join(favorite.Object.DNS, "\nnameserver ") +
+				"\n"
+		} else {
+			startDns()
+			dns = fmt.Sprintf("# created by gof5 VPN client\nnameserver %s\n", listenAddr)
+		}
 		err = ioutil.WriteFile(resolvPath, []byte(dns), 0644)
 		if err != nil {
 			errChan <- fmt.Errorf("failed to write %s: %s", resolvPath, err)
@@ -450,7 +460,7 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 			errChan <- fmt.Errorf("failed to detect %s interface: %s", name, err)
 			return
 		}
-		for _, cidr := range cidrs.Routes {
+		for _, cidr := range config.Routes {
 			route := netlink.Route{LinkIndex: link.Attrs().Index, Dst: cidr}
 			if err := netlink.RouteAdd(&route); err != nil {
 				errChan <- fmt.Errorf("failed to set %s route on %s interface: %s", cidr.String(), name, err)
@@ -472,7 +482,7 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 		}
 		if routesReady && link != nil {
 			log.Printf("Removing routes from %s interface", name)
-			for _, cidr := range cidrs.Routes {
+			for _, cidr := range config.Routes {
 				route := netlink.Route{LinkIndex: link.Attrs().Index, Dst: cidr}
 				if err := netlink.RouteDel(&route); err != nil {
 					log.Printf("Failed to delete %s route from %s interface: %s", cidr.String(), name, err)
@@ -492,10 +502,10 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 	}()
 
 	// http->tun go routine
-	go httpToTun(conn, pppd, errChan, debug)
+	go httpToTun(conn, pppd, errChan)
 
 	// tun->http go routine
-	go tunToHttp(conn, pppd, errChan, debug)
+	go tunToHttp(conn, pppd, errChan)
 
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 	<-termChan
