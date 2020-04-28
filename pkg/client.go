@@ -319,11 +319,7 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 	}
 	defer conn.Close()
 
-	// TODO: urlencode?
-	str := fmt.Sprintf("GET %s HTTP/1.0", purl.RequestURI()) + "\r\n" +
-		"Host: " + server + "\r\n" +
-		"\r\n"
-
+	str := fmt.Sprintf("GET %s HTTP/1.0\r\nHost: %s\r\n\r\n", purl.RequestURI(), server)
 	n, err := conn.Write([]byte(str))
 	if err != nil {
 		return fmt.Errorf("failed to send VPN session request: %s", err)
@@ -361,9 +357,19 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 	}
 
 	// VPN
-	cmd := exec.Command("pppd", "logfd", "2", "noauth", "nodetach",
-		"crtscts", "passive", "ipcp-accept-local", "ipcp-accept-remote",
-		"local", "nodeflate", "novj", "nodefaultroute")
+	cmd := exec.Command("pppd",
+		"logfd", "2",
+		"noauth",
+		"nodetach",
+		"crtscts",
+		"passive",
+		"ipcp-accept-local",
+		"ipcp-accept-remote",
+		"local",
+		"nodeflate",
+		"novj",
+		"nodefaultroute",
+	)
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("cannot allocate stderr pipe: %s", err)
@@ -373,11 +379,11 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 	errChan := make(chan error, 1)
 	// error to be returned by a go routine
 	var ret error
-	tunUp := make(chan bool)
+	tunUp := make(chan bool, 1)
 	var name string
-	tunName := make(chan string)
+	tunName := make(chan string, 1)
 	var link netlink.Link
-	termChan := make(chan os.Signal)
+	termChan := make(chan os.Signal, 1)
 
 	// error handler
 	go func() {
@@ -480,6 +486,11 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 		return fmt.Errorf("failed to start pppd: %s", err)
 	}
 
+	// terminate on pppd termination
+	go func() {
+		errChan <- cmd.Wait()
+	}()
+
 	// http->tun go routine
 	go httpToTun(conn, pppd, errChan, debug)
 
@@ -488,6 +499,9 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 	<-termChan
+
+	// TODO: properly wait for pppd process on ctrl+c
+	cmd.Wait()
 
 	if closeSession {
 		// close session
