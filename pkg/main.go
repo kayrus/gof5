@@ -1,8 +1,8 @@
 package pkg
 
 import (
+	"bufio"
 	"crypto/tls"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
@@ -12,14 +12,19 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
+	"syscall"
 
-	"github.com/songgao/water"
-	"golang.org/x/net/ipv4"
+	"github.com/creack/pty"
+	"github.com/vishvananda/netlink"
+	"gopkg.in/yaml.v2"
 )
 
 func login(c *http.Client, server, username, password string) error {
+	log.Printf("Logging in...")
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s", server), nil)
 	req.Proto = "HTTP/1.0"
 	req.Header.Set("User-Agent", userAgent)
@@ -75,7 +80,7 @@ func saveCookies(c *http.Client, u *url.URL) error {
 	for _, c := range c.Jar.Cookies(u) {
 		cookies = append(cookies, c.String())
 	}
-	return ioutil.WriteFile(cookiesPath, []byte(strings.Join(cookies, "\n")), 0644)
+	return ioutil.WriteFile(cookiesPath, []byte(strings.Join(cookies, "\n")), 0600)
 }
 
 func parseProfile(body []byte) (string, error) {
@@ -92,13 +97,6 @@ func parseProfile(body []byte) (string, error) {
 	}
 
 	return "", fmt.Errorf("VPN profile was not found")
-}
-
-func ipRun(args ...string) {
-	err := exec.Command("/sbin/ip", args...).Run()
-	if nil != err {
-		log.Fatalf("Error running /sbin/ip: %s", err)
-	}
 }
 
 func getProfiles(c *http.Client, server string) (*http.Response, error) {
@@ -134,10 +132,80 @@ func getConnectionOptions(c *http.Client, server string, profile string) (*Favor
 	return &favorite, nil
 }
 
-func Connect(server, username, password string, debug bool) error {
+func readRoutes() (*Routes, error) {
+	// read routes file
+	raw, err := ioutil.ReadFile(routesConfig)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot read %s config: %s", routesConfig, err)
+	}
+
+	var cidrs Routes
+	err = yaml.Unmarshal(raw, &cidrs)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot parse %s file: %v", routesConfig, err)
+	}
+
+	return &cidrs, nil
+}
+
+// http->tun
+func httpToTun(conn *tls.Conn, pppd *os.File, errChan chan error, debug bool) {
+	buf := make([]byte, 1500)
+	for {
+		rn, err := conn.Read(buf)
+		if err != nil {
+			errChan <- fmt.Errorf("Fatal read http: %s", err)
+		}
+		if debug {
+			log.Printf("Read %d bytes from http:\n%s", rn, hex.Dump(buf[:rn]))
+		}
+		wn, err := pppd.Write(buf[:rn])
+		if err != nil {
+			errChan <- fmt.Errorf("Fatal write to pppd: %s", err)
+		}
+		if debug {
+			log.Printf("Sent %d bytes to pppd", wn)
+		}
+	}
+}
+
+// tun->http
+func tunToHttp(conn *tls.Conn, pppd *os.File, errChan chan error, debug bool) {
+	buf := make([]byte, 1500)
+	for {
+		rn, err := pppd.Read(buf)
+		if err != nil {
+			errChan <- fmt.Errorf("Fatal read pppd: %s", err)
+		}
+		if debug {
+			log.Printf("Read %d bytes from pppd:\n%s", rn, hex.Dump(buf[:rn]))
+		}
+		wn, err := conn.Write(buf[:rn])
+		if err != nil {
+			errChan <- fmt.Errorf("Fatal write to http: %s", err)
+		}
+		if debug {
+			log.Printf("Sent %d bytes to http", wn)
+		}
+	}
+}
+
+func Connect(server, username, password string, closeSession bool, debug bool) error {
 	u, err := url.Parse(fmt.Sprintf("https://%s", server))
 	if err != nil {
 		return err
+	}
+
+	// read cusom routes
+	cidrs, err := readRoutes()
+	if err != nil {
+		return err
+	}
+
+	// read current resolv.conf
+	resolvConf, err := ioutil.ReadFile(resolvPath)
+	if err != nil {
+		return fmt.Errorf("Cannot read %s: %s", resolvPath, err)
 	}
 
 	cookieJar, err := cookiejar.New(nil)
@@ -173,11 +241,13 @@ func Connect(server, username, password string, debug bool) error {
 		if err := login(c, server, username, password); err != nil {
 			return err
 		}
+	} else {
+		log.Printf("Reusing saved HTTPS VPN session")
 	}
 
 	resp, err := getProfiles(c, server)
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to get VPN profiles: %s", err)
 	}
 
 	if resp.StatusCode == 302 {
@@ -195,39 +265,39 @@ func Connect(server, username, password string, debug bool) error {
 		// new request
 		resp, err = getProfiles(c, server)
 		if err != nil {
-			return err
+			return fmt.Errorf("Failed to get VPN profiles: %s", err)
 		}
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to read VPN profiles: %s", err)
 	}
 	resp.Body.Close()
 
 	profile, err := parseProfile(body)
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to parse VPN profiles: %s", err)
 	}
 
 	favorite, err := getConnectionOptions(c, server, profile)
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to get VPN connection options: %s", err)
 	}
 
 	//log.Printf("Connection options: %+#v", *favorite)
 
 	// save cookies
 	if err := saveCookies(c, u); err != nil {
-		return err
+		return fmt.Errorf("Failed to save cookies: %s", err)
 	}
 
 	// TLS
-	//purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&Z=%s&ipv4=yes&hdlc_framing=no", server, favorite.Object.SessionID, favorite.Object.UrZ))
-	hostname := base64.StdEncoding.EncodeToString([]byte("my-hostname"))
-	purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s", server, favorite.Object.SessionID, hostname, favorite.Object.HDLCFraming, "yes", "no", favorite.Object.UrZ))
+	purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&Z=%s", server, favorite.Object.SessionID, favorite.Object.UrZ))
+	//hostname := base64.StdEncoding.EncodeToString([]byte("my-hostname"))
+	//purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s", server, favorite.Object.SessionID, hostname, favorite.Object.HDLCFraming, "yes", "no", favorite.Object.UrZ))
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to parse connection VPN: %s", err)
 	}
 	conf := &tls.Config{
 		InsecureSkipVerify: false,
@@ -235,7 +305,7 @@ func Connect(server, username, password string, debug bool) error {
 
 	conn, err := tls.Dial("tcp", fmt.Sprintf("%s:443", server), conf)
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to dial to %s:443: %s", server, err)
 	}
 	defer conn.Close()
 
@@ -249,13 +319,15 @@ func Connect(server, username, password string, debug bool) error {
 		return err
 	}
 
-	log.Printf("Sent %d bytes", n)
+	if debug {
+		log.Printf("Sent %d bytes", n)
+	}
 
 	// TODO: http.ReadResponse()
 	buf := make([]byte, 1500)
 	n, err = conn.Read(buf)
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to get initial VPN connection response: %s", err)
 	}
 
 	var clientIP, serverIP string
@@ -268,94 +340,139 @@ func Connect(server, username, password string, debug bool) error {
 				serverIP = v[1]
 			}
 		}
-		log.Printf("%s", v)
 	}
 
-	log.Printf("Data: %s", buf)
-	log.Printf("Received %d bytes", n)
+	if debug {
+		log.Printf("Data: %s", buf)
+		log.Printf("Received %d bytes", n)
 
-	log.Printf("Client IP: %s", clientIP)
-	log.Printf("Server IP: %s", serverIP)
+		log.Printf("Client IP: %s", clientIP)
+		log.Printf("Server IP: %s", serverIP)
+	}
 
 	// VPN
-	//iface, err := taptun.NewTun("")
-	config := water.Config{
-		DeviceType: water.TUN,
-		//PlatformSpecificParams: water.PlatformSpecificParams{MultiQueue: true},
-	}
-
-	iface, err := water.New(config)
+	cmd := exec.Command("pppd", "logfd", "2", "noauth", "nodetach",
+		"crtscts", "passive", "ipcp-accept-local", "ipcp-accept-remote",
+		"local", "nodeflate", "novj", "nodefaultroute")
+	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("Cannot allocate stderr pipe: %s", err)
 	}
 
-	name := iface.Name()
-	//name := "tun0"
+	// define channels
+	errChan := make(chan error, 1)
+	// error to be returned by a go routine
+	var ret error
+	tunUp := make(chan bool)
+	var name string
+	tunName := make(chan string)
+	var link netlink.Link
+	termChan := make(chan os.Signal)
 
-	ipRun("link", "set", "dev", name, "mtu", "1332")
-	ipRun("link", "set", "arp", "on", "dev", "tun0")
-	ipRun("link", "set", "multicast", "off", "dev", "tun0")
-	ipRun("addr", "add", clientIP, "peer", serverIP, "dev", name)
-	ipRun("link", "set", "dev", name, "up")
-	ipRun("-6", "addr", "flush", "dev", name)
-	// for test purposes redirect only to "10.0.0.0/8" CIDR and google IP
-	ipRun("route", "add", "10.0.0.0/8", "via", clientIP, "proto", "unspec", "metric", "1", "dev", name)
-	ipRun("route", "add", "8.8.8.8", "via", clientIP, "proto", "unspec", "metric", "1", "dev", name)
-
-	// http->tun go routine
+	// error handler
 	go func() {
-		buf := make([]byte, 1500)
-		for {
-			n, err = conn.Read(buf)
-			if err != nil {
-				log.Fatalf("Fatal read http: %s", err)
+		ret = <-errChan
+		termChan <- syscall.SIGINT
+	}()
+
+	// pppd log parser
+	go func() {
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			if strings.Contains(scanner.Text(), "Using interface") {
+				if v := strings.FieldsFunc(strings.TrimSpace(scanner.Text()), splitFunc); len(v) > 0 {
+					tunName <- v[len(v)-1]
+				}
 			}
-			// F5 sends back the sent package with 13 byte header
-			// cut off the 13 bytes header
-			// probably we need to parse this header and create a response to "activate" a connection
-			t := buf[13:n]
-			log.Printf("Read %d bytes from http:\n%s", n, hex.Dump(buf[:n]))
-			header, _ := ipv4.ParseHeader(t)
-			log.Printf("ipv4 from http: %+v", header)
-			n, err := iface.Write(t)
-			if err != nil {
-				log.Printf("Fatal write to tun: %s", err)
+			if strings.Contains(scanner.Text(), "remote IP address") {
+				tunUp <- true
 			}
-			log.Printf("Sent %d bytes to tun", n)
+			log.Printf("\033[1;32m%s\033[0m", scanner.Text())
 		}
 	}()
 
-	// tun->http loop
-	buf = make([]byte, 1500)
-	for {
-		n, err = iface.Read(buf)
-		if err != nil {
-			log.Fatalf("Fatal read tun: %s", err)
+	// restore resolv.conf on termination
+	var restoreResolv bool
+	// set routes and DNS
+	go func() {
+		// wait for tun name
+		name = <-tunName
+
+		// wait for tun up
+		if !<-tunUp {
+			errChan <- fmt.Errorf("Unexpected tun status event")
 		}
-		// TODO: buf := new(bytes.Buffer) with binary.Write(buf, binary.BigEndian, uint16(n))
-		head := []byte{0xf5, 0x00, 0x00, byte(n)}
-		data := buf[:n]
-		var t []byte
-		t = append(t, head...)
-		t = append(t, data...)
-		log.Printf("Read %d bytes from tun:\n%s", n, hex.Dump(data))
-		header, _ := ipv4.ParseHeader(data)
-		log.Printf("ipv4 from tun: %+v", header)
-		n, err := conn.Write(t)
-		if err != nil {
-			log.Printf("Fatal write to http: %s", err)
+
+		if name == "" {
+			errChan <- fmt.Errorf("Failed to detect tunnel name")
 		}
-		log.Printf("Sent %d bytes to http", n)
+
+		// define DNS servers, provided by F5
+		log.Printf("Setting %s", resolvPath)
+		dns := "nameserver " + strings.Join(favorite.Object.DNS, "\nnameserver ") + "\n"
+		err = ioutil.WriteFile(resolvPath, []byte(dns), 0644)
+		if err != nil {
+			errChan <- fmt.Errorf("Failed to write %s: %s", resolvPath, err)
+		}
+		restoreResolv = true
+
+		// set routes
+		log.Printf("Setting routes on %s interface", name)
+		link, err = netlink.LinkByName(name)
+		if err != nil {
+			errChan <- fmt.Errorf("Failed to detect %s interface: %s", name, err)
+		}
+		for _, cidr := range cidrs.Routes {
+			route := netlink.Route{LinkIndex: link.Attrs().Index, Dst: cidr}
+			if err := netlink.RouteAdd(&route); err != nil {
+				errChan <- fmt.Errorf("Failed to set %v route on %s interface: %s", *cidr, name, err)
+			}
+		}
+		log.Printf("\033[1;32m%s\033[0m", "Connection established")
+	}()
+
+	// restore original settings
+	defer func() {
+		if restoreResolv {
+			log.Printf("Restoring original %s", resolvPath)
+			err := ioutil.WriteFile(resolvPath, resolvConf, 0644)
+			if err != nil {
+				log.Printf("Failed to restore %s: %s", resolvPath, err)
+			}
+		}
+		if link != nil {
+			log.Printf("Removing routes from %s interface", name)
+			for _, cidr := range cidrs.Routes {
+				route := netlink.Route{LinkIndex: link.Attrs().Index, Dst: cidr}
+				if err := netlink.RouteDel(&route); err != nil {
+					log.Printf("Failed to delete %v route from %s interface: %s", *cidr, name, err)
+				}
+			}
+		}
+	}()
+
+	pppd, err := pty.Start(cmd)
+	if err != nil {
+		return fmt.Errorf("Failed to start pppd: %s", err)
 	}
 
-	/*
-		// close session
-		req, err = http.NewRequest("GET", fmt.Sprintf("https://%s/vdesk/hangup.php3?hangup_error=1", server), nil)
-		if err != nil {
-			return err
-		}
-		defer c.Do(req)
-	*/
+	// http->tun go routine
+	go httpToTun(conn, pppd, errChan, debug)
 
-	return nil
+	// tun->http go routine
+	go tunToHttp(conn, pppd, errChan, debug)
+
+	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
+	<-termChan
+
+	if closeSession {
+		// close session
+		r, err := http.NewRequest("GET", fmt.Sprintf("https://%s/vdesk/hangup.php3?hangup_error=1", server), nil)
+		if err != nil {
+			log.Printf("Failed to close the VPN session %s", err)
+		}
+		defer c.Do(r)
+	}
+
+	return ret
 }

@@ -1,17 +1,29 @@
 # gof5
 
+## Requirements
+
+* pppd binary must be installed
+* application must be executed as privileged root user
+
+## HOWTO
+
 ```sh
 $ make
 $ sudo ./bin/gof5 --server server --username username --password token --debug
 ```
 
-# Work in Progress
+Username and password will be used only, when `cookies` file doesn't contain previously saved HTTPS session cookies or when the saved session is expired or explicitly terminated (`--close-session`).
 
-The work is still in progress. F5 VPN encapsulates VPN traffic into PPP protocol. More details:
-* https://support.f5.com/csp/article/K23207037
-* https://support.f5.com/csp/article/K00231525
+Use `--close-session` flag to terminate an HTTPS VPN session on exit. Next startup will require a valid username/password.
 
-## TODO
+A `routes.yaml` file must be placed in the current directory with contents like:
 
-* Veryfy and cut off `0xf5 0x00 bigendian` header
-* Pass the rest directly to pppd descriptors
+```yaml
+routes:
+- 1.2.3.4
+- 1.2.3.5/32
+```
+
+## Credits
+
+Based on the https://github.com/rei/f5vpn-client project idea.
