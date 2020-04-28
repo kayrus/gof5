@@ -8,8 +8,6 @@ import (
 	"log"
 	"net/http"
 	"strings"
-
-	"github.com/go-xmlfmt/xmlfmt"
 )
 
 // Logger is an interface representing the Logger struct
@@ -48,15 +46,12 @@ func (noopLogger) ResponsePrintf(format string, args ...interface{}) {}
 type RoundTripper struct {
 	// Default http.RoundTripper
 	Rt http.RoundTripper
-	// A custom function to format and mask XML requests and responses
-	FormatXML func([]byte) (string, error)
 	// If Logger is not nil, then RoundTrip method will debug the JSON
 	// requests and responses
 	Logger Logger
 }
 
 // formatHeaders converts standard http.Header type to a string with separated headers.
-// It will hide data of sensitive headers.
 func (rt *RoundTripper) formatHeaders(headers http.Header, separator string) string {
 	result := make([]string, len(headers))
 
@@ -127,9 +122,9 @@ func (rt *RoundTripper) logRequest(original io.ReadCloser, contentType string) (
 		return nil, err
 	}
 
-	rt.log().RequestPrintf("Body: %s", bs.Bytes())
+	rt.log().RequestPrintf("Body: %s", bs.String())
 
-	return ioutil.NopCloser(strings.NewReader(bs.String())), nil
+	return ioutil.NopCloser(bytes.NewReader(bs.Bytes())), nil
 }
 
 // logResponse will log the HTTP Response details.
@@ -143,24 +138,9 @@ func (rt *RoundTripper) logResponse(original io.ReadCloser, contentType string) 
 		return nil, err
 	}
 
-	debugInfo, err := rt.formatXML()(bs.Bytes())
-	if err != nil {
-		rt.log().ResponsePrintf("%s", err)
-	}
-	if debugInfo != "" {
-		rt.log().ResponsePrintf("Body: %s", debugInfo)
-	}
+	rt.log().ResponsePrintf("Body: %s", bs.String())
 
-	return ioutil.NopCloser(strings.NewReader(bs.String())), nil
-}
-
-func (rt *RoundTripper) formatXML() func([]byte) (string, error) {
-	// this is concurrency safe
-	f := rt.FormatXML
-	if f == nil {
-		return FormatXML
-	}
-	return f
+	return ioutil.NopCloser(bytes.NewReader(bs.Bytes())), nil
 }
 
 func (rt *RoundTripper) log() Logger {
@@ -171,10 +151,4 @@ func (rt *RoundTripper) log() Logger {
 		return &noopLogger{}
 	}
 	return l
-}
-
-// FormatXML is a default function to pretty-format a XML body.
-// It will also mask known fields which contain sensitive information.
-func FormatXML(raw []byte) (string, error) {
-	return xmlfmt.FormatXML(string(raw), "", "  "), nil
 }
