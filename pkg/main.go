@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/xml"
@@ -26,7 +27,7 @@ import (
 
 func login(c *http.Client, server, username, password string) error {
 	log.Printf("Logging in...")
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s", server), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s?outform=xml", server), nil)
 	req.Proto = "HTTP/1.0"
 	req.Header.Set("User-Agent", userAgent)
 	resp, err := c.Do(req)
@@ -43,20 +44,24 @@ func login(c *http.Client, server, username, password string) error {
 	data.Set("username", username)
 	data.Add("password", password)
 	data.Add("vhost", "standard")
-	req, err = http.NewRequest("POST", fmt.Sprintf("https://%s/my.policy", server), strings.NewReader(data.Encode()))
+	req, err = http.NewRequest("POST", fmt.Sprintf("https://%s/my.policy?outform=xml", server), strings.NewReader(data.Encode()))
 	req.Header.Set("Referer", fmt.Sprintf("https://%s/my.policy", server))
 	req.Header.Set("User-Agent", userAgent)
 	resp, err = c.Do(req)
 	if err != nil {
 		return err
 	}
-	_, err = ioutil.ReadAll(resp.Body)
+	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
 	resp.Body.Close()
 
-	return err
+	if bytes.Contains(body, []byte("Session Expired/Timeout")) {
+		return fmt.Errorf("wrong credentials")
+	}
+
+	return nil
 }
 
 func readCookies(c *http.Client, u *url.URL) {
@@ -137,13 +142,13 @@ func readRoutes() (*Routes, error) {
 	// read routes file
 	raw, err := ioutil.ReadFile(path.Join(currDir, routesConfig))
 	if err != nil {
-		return nil, fmt.Errorf("Cannot read %s config: %s", routesConfig, err)
+		return nil, fmt.Errorf("cannot read %s config: %s", routesConfig, err)
 	}
 
 	var cidrs Routes
 	err = yaml.Unmarshal(raw, &cidrs)
 	if err != nil {
-		return nil, fmt.Errorf("Cannot parse %s file: %v", routesConfig, err)
+		return nil, fmt.Errorf("cannot parse %s file: %v", routesConfig, err)
 	}
 
 	return &cidrs, nil
@@ -155,7 +160,7 @@ func httpToTun(conn *tls.Conn, pppd *os.File, errChan chan error, debug bool) {
 	for {
 		rn, err := conn.Read(buf)
 		if err != nil {
-			errChan <- fmt.Errorf("Fatal read http: %s", err)
+			errChan <- fmt.Errorf("fatal read http: %s", err)
 			return
 		}
 		if debug {
@@ -163,7 +168,7 @@ func httpToTun(conn *tls.Conn, pppd *os.File, errChan chan error, debug bool) {
 		}
 		wn, err := pppd.Write(buf[:rn])
 		if err != nil {
-			errChan <- fmt.Errorf("Fatal write to pppd: %s", err)
+			errChan <- fmt.Errorf("fatal write to pppd: %s", err)
 			return
 		}
 		if debug {
@@ -178,7 +183,7 @@ func tunToHttp(conn *tls.Conn, pppd *os.File, errChan chan error, debug bool) {
 	for {
 		rn, err := pppd.Read(buf)
 		if err != nil {
-			errChan <- fmt.Errorf("Fatal read pppd: %s", err)
+			errChan <- fmt.Errorf("fatal read pppd: %s", err)
 			return
 		}
 		if debug {
@@ -186,7 +191,7 @@ func tunToHttp(conn *tls.Conn, pppd *os.File, errChan chan error, debug bool) {
 		}
 		wn, err := conn.Write(buf[:rn])
 		if err != nil {
-			errChan <- fmt.Errorf("Fatal write to http: %s", err)
+			errChan <- fmt.Errorf("fatal write to http: %s", err)
 			return
 		}
 		if debug {
@@ -198,13 +203,13 @@ func tunToHttp(conn *tls.Conn, pppd *os.File, errChan chan error, debug bool) {
 func Connect(server, username, password string, closeSession bool, debug bool) error {
 	u, err := url.Parse(fmt.Sprintf("https://%s", server))
 	if err != nil {
-		return fmt.Errorf("Failed to parse server hostname: %s", err)
+		return fmt.Errorf("failed to parse server hostname: %s", err)
 	}
 
 	// detect current directory
 	currDir, err = os.Getwd()
 	if err != nil {
-		return fmt.Errorf("Failed to detect current working directory: %s", err)
+		return fmt.Errorf("failed to detect current working directory: %s", err)
 	}
 
 	// read custom routes
@@ -215,7 +220,7 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 
 	cookieJar, err := cookiejar.New(nil)
 	if err != nil {
-		return fmt.Errorf("Failed to create cookie jar: %s", err)
+		return fmt.Errorf("failed to create cookie jar: %s", err)
 	}
 
 	c := &http.Client{Jar: cookieJar}
@@ -225,7 +230,7 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 			var err error
 			c.Jar, err = cookiejar.New(nil)
 			if err != nil {
-				return fmt.Errorf("Failed to create cookie jar: %s", err)
+				return fmt.Errorf("failed to create cookie jar: %s", err)
 			}
 			return http.ErrUseLastResponse
 		}
@@ -244,7 +249,7 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 	// need login
 	if len(c.Jar.Cookies(u)) == 0 {
 		if err := login(c, server, username, password); err != nil {
-			return fmt.Errorf("Failed to login: %s", err)
+			return fmt.Errorf("failed to login: %s", err)
 		}
 	} else {
 		log.Printf("Reusing saved HTTPS VPN session")
@@ -252,49 +257,49 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 
 	resp, err := getProfiles(c, server)
 	if err != nil {
-		return fmt.Errorf("Failed to get VPN profiles: %s", err)
+		return fmt.Errorf("failed to get VPN profiles: %s", err)
 	}
 
 	if resp.StatusCode == 302 {
 		// need to relogin
 		_, err = io.Copy(ioutil.Discard, resp.Body)
 		if err != nil {
-			return fmt.Errorf("Failed to read response body: %s", err)
+			return fmt.Errorf("failed to read response body: %s", err)
 		}
 		resp.Body.Close()
 
 		if err := login(c, server, username, password); err != nil {
-			return fmt.Errorf("Failed to login: %s", err)
+			return fmt.Errorf("failed to login: %s", err)
 		}
 
 		// new request
 		resp, err = getProfiles(c, server)
 		if err != nil {
-			return fmt.Errorf("Failed to get VPN profiles: %s", err)
+			return fmt.Errorf("failed to get VPN profiles: %s", err)
 		}
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("Failed to read VPN profiles: %s", err)
+		return fmt.Errorf("failed to read VPN profiles: %s", err)
 	}
 	resp.Body.Close()
 
 	profile, err := parseProfile(body)
 	if err != nil {
-		return fmt.Errorf("Failed to parse VPN profiles: %s", err)
+		return fmt.Errorf("failed to parse VPN profiles: %s", err)
 	}
 
 	favorite, err := getConnectionOptions(c, server, profile)
 	if err != nil {
-		return fmt.Errorf("Failed to get VPN connection options: %s", err)
+		return fmt.Errorf("failed to get VPN connection options: %s", err)
 	}
 
 	//log.Printf("Connection options: %+#v", *favorite)
 
 	// save cookies
 	if err := saveCookies(c, u); err != nil {
-		return fmt.Errorf("Failed to save cookies: %s", err)
+		return fmt.Errorf("failed to save cookies: %s", err)
 	}
 
 	// TLS
@@ -302,7 +307,7 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 	//hostname := base64.StdEncoding.EncodeToString([]byte("my-hostname"))
 	//purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s", server, favorite.Object.SessionID, hostname, favorite.Object.HDLCFraming, "yes", "no", favorite.Object.UrZ))
 	if err != nil {
-		return fmt.Errorf("Failed to parse connection VPN: %s", err)
+		return fmt.Errorf("failed to parse connection VPN: %s", err)
 	}
 	conf := &tls.Config{
 		InsecureSkipVerify: false,
@@ -310,7 +315,7 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 
 	conn, err := tls.Dial("tcp", fmt.Sprintf("%s:443", server), conf)
 	if err != nil {
-		return fmt.Errorf("Failed to dial to %s:443: %s", server, err)
+		return fmt.Errorf("failed to dial %s:443: %s", server, err)
 	}
 	defer conn.Close()
 
@@ -321,7 +326,7 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 
 	n, err := conn.Write([]byte(str))
 	if err != nil {
-		return fmt.Errorf("Failed to send VPN session request: %s", err)
+		return fmt.Errorf("failed to send VPN session request: %s", err)
 	}
 
 	if debug {
@@ -332,7 +337,7 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 	buf := make([]byte, 1500)
 	n, err = conn.Read(buf)
 	if err != nil {
-		return fmt.Errorf("Failed to get initial VPN connection response: %s", err)
+		return fmt.Errorf("failed to get initial VPN connection response: %s", err)
 	}
 
 	var clientIP, serverIP string
@@ -361,7 +366,7 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 		"local", "nodeflate", "novj", "nodefaultroute")
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return fmt.Errorf("Cannot allocate stderr pipe: %s", err)
+		return fmt.Errorf("cannot allocate stderr pipe: %s", err)
 	}
 
 	// define channels
@@ -405,13 +410,13 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 		// wait for tun name
 		name = <-tunName
 		if name == "" {
-			errChan <- fmt.Errorf("Failed to detect tunnel name")
+			errChan <- fmt.Errorf("failed to detect tunnel name")
 			return
 		}
 
 		// wait for tun up
 		if !<-tunUp {
-			errChan <- fmt.Errorf("Unexpected tun status event")
+			errChan <- fmt.Errorf("unexpected tun status event")
 			return
 		}
 
@@ -419,7 +424,7 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 		// reading it here in order to avoid conflicts, when the second VPN connection is established in parallel
 		resolvConf, err = ioutil.ReadFile(resolvPath)
 		if err != nil {
-			errChan <- fmt.Errorf("Cannot read %s: %s", resolvPath, err)
+			errChan <- fmt.Errorf("cannot read %s: %s", resolvPath, err)
 			return
 		}
 
@@ -428,7 +433,7 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 		dns := "nameserver " + strings.Join(favorite.Object.DNS, "\nnameserver ") + "\n"
 		err = ioutil.WriteFile(resolvPath, []byte(dns), 0644)
 		if err != nil {
-			errChan <- fmt.Errorf("Failed to write %s: %s", resolvPath, err)
+			errChan <- fmt.Errorf("failed to write %s: %s", resolvPath, err)
 			return
 		}
 
@@ -436,13 +441,13 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 		log.Printf("Setting routes on %s interface", name)
 		link, err = netlink.LinkByName(name)
 		if err != nil {
-			errChan <- fmt.Errorf("Failed to detect %s interface: %s", name, err)
+			errChan <- fmt.Errorf("failed to detect %s interface: %s", name, err)
 			return
 		}
 		for _, cidr := range cidrs.Routes {
 			route := netlink.Route{LinkIndex: link.Attrs().Index, Dst: cidr}
 			if err := netlink.RouteAdd(&route); err != nil {
-				errChan <- fmt.Errorf("Failed to set %s route on %s interface: %s", cidr.String(), name, err)
+				errChan <- fmt.Errorf("failed to set %s route on %s interface: %s", cidr.String(), name, err)
 				return
 			}
 		}
@@ -472,7 +477,7 @@ func Connect(server, username, password string, closeSession bool, debug bool) e
 
 	pppd, err := pty.Start(cmd)
 	if err != nil {
-		return fmt.Errorf("Failed to start pppd: %s", err)
+		return fmt.Errorf("failed to start pppd: %s", err)
 	}
 
 	// http->tun go routine
