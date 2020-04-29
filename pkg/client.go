@@ -58,7 +58,7 @@ func login(c *http.Client, server, username, password string) error {
 	}
 	resp.Body.Close()
 
-	if bytes.Contains(body, []byte("Session Expired/Timeout")) {
+	if resp.StatusCode == 302 || bytes.Contains(body, []byte("Session Expired/Timeout")) {
 		return fmt.Errorf("wrong credentials")
 	}
 
