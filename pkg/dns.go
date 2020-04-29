@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"fmt"
 	"log"
 	"strings"
 
@@ -15,6 +16,8 @@ var (
 )
 
 func startDns() {
+	log.Printf("Serving DNS proxy on %s:53", listenAddr)
+	log.Printf("Forwarding %q DNS requests to %q", dnsSuffixes, servers)
 	go func() {
 		srv := &dns.Server{Addr: listenAddr + ":53", Net: "udp", Handler: dns.HandlerFunc(dnsUdpHandler)}
 		err := srv.ListenAndServe()
@@ -40,8 +43,9 @@ func dnsHandler(w dns.ResponseWriter, m *dns.Msg, proto string) {
 				log.Printf("Resoving %q using VPN DNS", m.Question[0].Name)
 			}
 			for _, s := range servers {
-				handleCustom(w, m, c, s)
-				return
+				if err := handleCustom(w, m, c, s); err == nil {
+					return
+				}
 			}
 		}
 	}
@@ -49,20 +53,23 @@ func dnsHandler(w dns.ResponseWriter, m *dns.Msg, proto string) {
 	handleCustom(w, m, c, "8.8.8.8")
 }
 
-// TODO: handle sigterm properly
-// TODO: handle panic on accessing "m.Question[0].Name"
-func handleCustom(w dns.ResponseWriter, m *dns.Msg, c *dns.Client, s string) {
+func handleCustom(w dns.ResponseWriter, o *dns.Msg, c *dns.Client, s string) error {
+	m := new(dns.Msg)
+	o.CopyTo(m)
 	v := m.Question[0].Name
 	m.Question[0].Name = strings.ToUpper(v)
 	r, _, err := c.Exchange(m, s+":53")
-	if err != nil {
-		log.Printf("failed to resolve %q", v)
+	if r == nil || err != nil {
+		return fmt.Errorf("failed to resolve %q", v)
 	}
-	r.Question[0].Name = strings.ToLower(r.Question[0].Name)
-	for i := 0; i < len(r.Answer); i++ {
-		r.Answer[i].Header().Name = strings.ToLower(r.Answer[i].Header().Name)
+	if len(r.Question) > 0 {
+		r.Question[0].Name = strings.ToLower(r.Question[0].Name)
+		for i := 0; i < len(r.Answer); i++ {
+			r.Answer[i].Header().Name = strings.ToLower(r.Answer[i].Header().Name)
+		}
 	}
 	w.WriteMsg(r)
+	return nil
 }
 
 func dnsUdpHandler(w dns.ResponseWriter, m *dns.Msg) {
