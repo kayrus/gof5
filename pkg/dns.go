@@ -13,6 +13,8 @@ import (
 
 const listenAddr = "127.0.0.253"
 
+// TODO: reverse DNS support, e.g. "in-addr.arpa"
+
 var (
 	// TODO: pass as a parameter to startDns func
 	servers     []string

@@ -51,16 +51,24 @@ type Favorite struct {
 }
 
 type Object struct {
-	SessionID   string `xml:"Session_ID"`
-	IpV4        bool   `xml:"IPV4_0,string"`
-	IpV6        bool   `xml:"IPV6_0,string"`
-	UrZ         string `xml:"ur_Z"`
-	HDLCFraming string `xml:"hdlc_framing,string"`
-	Host        string `xml:"host0"`
-	Port        string `xml:"port0"`
-	TunnelHost  string `xml:"tunnel_host0"`
-	TunnelPort  string `xml:"tunnel_port0"`
-	Add2Hosts   string `xml:"Add2Hosts0"`
+	SessionID                      string `xml:"Session_ID"`
+	IpV4                           bool   `xml:"IPV4_0,string"`
+	IpV6                           bool   `xml:"IPV6_0,string"`
+	UrZ                            string `xml:"ur_Z"`
+	HDLCFraming                    string `xml:"hdlc_framing,string"`
+	Host                           string `xml:"host0"`
+	Port                           string `xml:"port0"`
+	TunnelHost                     string `xml:"tunnel_host0"`
+	TunnelPort                     string `xml:"tunnel_port0"`
+	Add2Hosts                      string `xml:"Add2Hosts0"`
+	DNSSuffix                      string `xml:"DNSSuffix0"`
+	DNSRegisterConnection          int    `xml:"DNSRegisterConnection0"`
+	DNSUseDNSSuffixForRegistration int    `xml:"DNSUseDNSSuffixForRegistration0"`
+	SplitTunneling                 int    `xml:"SplitTunneling0"`
+	DNSSPlit                       string `xml:"DNS_SPLIT0"`
+	AllowLocalSubnetAccess         bool   `xml:"AllowLocalSubnetAccess0,string"`
+	AllowLocalDNSServersAccess     bool   `xml:"AllowLocalDNSServersAccess0,string"`
+	AllowLocalDHCPAccess           bool   `xml:"AllowLocalDHCPAccess0,string"`
 	/*
 		DNS             []net.IP       `xml:"-"`
 		DNS6            []net.IP       `xml:"-"`
