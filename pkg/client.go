@@ -361,9 +361,9 @@ func Connect(server, username, password string, isHdlc, closeSession bool) error
 		hdlcFraming = "yes"
 	}
 	// TLS
-	purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&Z=%s&hdlc_framing=%s", server, favorite.Object.SessionID, favorite.Object.UrZ, hdlcFraming))
+	//purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&Z=%s&hdlc_framing=%s", server, favorite.Object.SessionID, favorite.Object.UrZ, hdlcFraming))
 	//hostname := base64.StdEncoding.EncodeToString([]byte("my-hostname"))
-	//purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s", server, favorite.Object.SessionID, hostname, favorite.Object.HDLCFraming, "yes", "no", favorite.Object.UrZ))
+	purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s", server, favorite.Object.SessionID, hdlcFraming, "yes", "yes", favorite.Object.UrZ))
 	if err != nil {
 		return fmt.Errorf("failed to parse connection VPN: %s", err)
 	}
@@ -415,7 +415,7 @@ func Connect(server, username, password string, isHdlc, closeSession bool) error
 	}
 
 	// VPN
-	cmd := exec.Command("pppd",
+	args := []string{
 		"logfd", "2",
 		"noauth",
 		"nodetach",
@@ -423,11 +423,19 @@ func Connect(server, username, password string, isHdlc, closeSession bool) error
 		"passive",
 		"ipcp-accept-local",
 		"ipcp-accept-remote",
+		"ipv6cp-accept-local",
+		"ipv6cp-accept-remote",
 		"local",
 		"nodeflate",
-		"novj",
 		"nodefaultroute",
-	)
+	}
+	if debug {
+		args = append(args,
+			"debug",
+			"kdebug", "1",
+		)
+	}
+	cmd := exec.Command("pppd", args...)
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("cannot allocate stderr pipe: %s", err)
@@ -502,7 +510,7 @@ func Connect(server, username, password string, isHdlc, closeSession bool) error
 				"nameserver " + strings.Join(favorite.Object.DNS, "\nnameserver ") +
 				"\n"
 		} else {
-			startDns()
+			startDns(resolvConf)
 			dns = fmt.Sprintf("# created by gof5 VPN client\nnameserver %s\n", listenAddr)
 		}
 		err = ioutil.WriteFile(resolvPath, []byte(dns), 0644)
@@ -529,26 +537,6 @@ func Connect(server, username, password string, isHdlc, closeSession bool) error
 		log.Printf("\033[1;32m%s\033[0m", "Connection established")
 	}()
 
-	// restore original settings
-	defer func() {
-		if resolvConf != nil {
-			log.Printf("Restoring original %s", resolvPath)
-			err := ioutil.WriteFile(resolvPath, resolvConf, 0644)
-			if err != nil {
-				log.Printf("Failed to restore %s: %s", resolvPath, err)
-			}
-		}
-		if routesReady && link != nil {
-			log.Printf("Removing routes from %s interface", name)
-			for _, cidr := range config.Routes {
-				route := netlink.Route{LinkIndex: link.Attrs().Index, Dst: cidr}
-				if err := netlink.RouteDel(&route); err != nil {
-					log.Printf("Failed to delete %s route from %s interface: %s", cidr.String(), name, err)
-				}
-			}
-		}
-	}()
-
 	pppd, err := pty.Start(cmd)
 	if err != nil {
 		return fmt.Errorf("failed to start pppd: %s", err)
@@ -556,7 +544,12 @@ func Connect(server, username, password string, isHdlc, closeSession bool) error
 
 	// terminate on pppd termination
 	go func() {
-		errChan <- cmd.Wait()
+		e := cmd.Wait()
+		if e != nil {
+			errChan <- fmt.Errorf("pppd %s", e)
+			return
+		}
+		errChan <- e
 	}()
 
 	if isHdlc {
@@ -575,6 +568,24 @@ func Connect(server, username, password string, isHdlc, closeSession bool) error
 
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 	<-termChan
+
+	if resolvConf != nil {
+		log.Printf("Restoring original %s", resolvPath)
+		err := ioutil.WriteFile(resolvPath, resolvConf, 0644)
+		if err != nil {
+			log.Printf("Failed to restore %s: %s", resolvPath, err)
+		}
+	}
+
+	if ret == nil && routesReady && link != nil {
+		log.Printf("Removing routes from %s interface", name)
+		for _, cidr := range config.Routes {
+			route := netlink.Route{LinkIndex: link.Attrs().Index, Dst: cidr}
+			if err := netlink.RouteDel(&route); err != nil {
+				log.Printf("Failed to delete %s route from %s interface: %s", cidr.String(), name, err)
+			}
+		}
+	}
 
 	// TODO: properly wait for pppd process on ctrl+c
 	cmd.Wait()
