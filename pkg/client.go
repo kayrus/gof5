@@ -58,6 +58,7 @@ func login(c *http.Client, server, username, password string) error {
 	}
 	resp.Body.Close()
 
+	// TODO: parse response 302 location and error code
 	if resp.StatusCode == 302 || bytes.Contains(body, []byte("Session Expired/Timeout")) {
 		return fmt.Errorf("wrong credentials")
 	}
@@ -92,9 +93,8 @@ func saveCookies(c *http.Client, u *url.URL) error {
 
 func parseProfile(body []byte) (string, error) {
 	var profiles Profiles
-	err := xml.Unmarshal(body, &profiles)
-	if err != nil {
-		return "", err
+	if err := xml.Unmarshal(body, &profiles); err != nil {
+		return "", fmt.Errorf("failed to unmarshal a response: %s", err)
 	}
 
 	if profiles.Type == "VPN" {
@@ -109,7 +109,7 @@ func parseProfile(body []byte) (string, error) {
 func getProfiles(c *http.Client, server string) (*http.Response, error) {
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s/vdesk/vpn/index.php3?outform=xml&client_version=2.0", server), nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to build a request: %s", err)
 	}
 	req.Header.Set("User-Agent", userAgent)
 	return c.Do(req)
@@ -117,23 +117,25 @@ func getProfiles(c *http.Client, server string) (*http.Response, error) {
 
 func getConnectionOptions(c *http.Client, server string, profile string) (*Favorite, error) {
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s/vdesk/vpn/connect.php3?%s&outform=xml&client_version=2.0", server, profile), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build a request: %s", err)
+	}
 	req.Header.Set("User-Agent", userAgent)
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read a request: %s", err)
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read a response: %s", err)
 	}
 	resp.Body.Close()
 
 	// parse profile
 	var favorite Favorite
-	err = xml.Unmarshal(body, &favorite)
-	if err != nil {
-		return nil, err
+	if err = xml.Unmarshal(body, &favorite); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal a response: %s", err)
 	}
 
 	return &favorite, nil
@@ -147,8 +149,7 @@ func readConfig() (*Config, error) {
 	}
 
 	var config Config
-	err = yaml.Unmarshal(raw, &config)
-	if err != nil {
+	if err = yaml.Unmarshal(raw, &config); err != nil {
 		return nil, fmt.Errorf("cannot parse %s file: %v", routesConfig, err)
 	}
 
@@ -267,6 +268,7 @@ func Connect(server, username, password string, isHdlc, closeSession bool) error
 	}
 
 	// read custom routes
+	// TODO: move all additional CLI options to YAML
 	config, err := readConfig()
 	if err != nil {
 		return err
@@ -513,8 +515,7 @@ func Connect(server, username, password string, isHdlc, closeSession bool) error
 			startDns(resolvConf)
 			dns = fmt.Sprintf("# created by gof5 VPN client\nnameserver %s\n", listenAddr)
 		}
-		err = ioutil.WriteFile(resolvPath, []byte(dns), 0644)
-		if err != nil {
+		if err = ioutil.WriteFile(resolvPath, []byte(dns), 0644); err != nil {
 			errChan <- fmt.Errorf("failed to write %s: %s", resolvPath, err)
 			return
 		}
@@ -528,7 +529,7 @@ func Connect(server, username, password string, isHdlc, closeSession bool) error
 		}
 		for _, cidr := range config.Routes {
 			route := netlink.Route{LinkIndex: link.Attrs().Index, Dst: cidr}
-			if err := netlink.RouteAdd(&route); err != nil {
+			if err = netlink.RouteAdd(&route); err != nil {
 				errChan <- fmt.Errorf("failed to set %s route on %s interface: %s", cidr.String(), name, err)
 				return
 			}
@@ -571,8 +572,7 @@ func Connect(server, username, password string, isHdlc, closeSession bool) error
 
 	if resolvConf != nil {
 		log.Printf("Restoring original %s", resolvPath)
-		err := ioutil.WriteFile(resolvPath, resolvConf, 0644)
-		if err != nil {
+		if err := ioutil.WriteFile(resolvPath, resolvConf, 0644); err != nil {
 			log.Printf("Failed to restore %s: %s", resolvPath, err)
 		}
 	}

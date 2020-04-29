@@ -110,8 +110,7 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		Routes []string `yaml:"routes"`
 	}
 
-	err := unmarshal(&s)
-	if err != nil {
+	if err := unmarshal(&s); err != nil {
 		return err
 	}
 
@@ -175,15 +174,13 @@ func (o *Object) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		TrafficControl  string `xml:"TrafficControl0"`
 	}
 
-	err := d.DecodeElement(&s, &start)
-	if err != nil {
+	if err := d.DecodeElement(&s, &start); err != nil {
 		return err
 	}
 	*o = Object(s.tmp)
 
 	if v, err := url.QueryUnescape(s.TrafficControl); err == nil {
-		err = xml.Unmarshal([]byte(v), &o.TrafficControl)
-		if err != nil {
+		if err = xml.Unmarshal([]byte(v), &o.TrafficControl); err != nil {
 			return err
 		}
 	}

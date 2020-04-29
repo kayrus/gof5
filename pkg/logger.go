@@ -117,8 +117,7 @@ func (rt *RoundTripper) logRequest(original io.ReadCloser, contentType string) (
 	var bs bytes.Buffer
 	defer original.Close()
 
-	_, err := io.Copy(&bs, original)
-	if err != nil {
+	if _, err := io.Copy(&bs, original); err != nil {
 		return nil, err
 	}
 
@@ -133,8 +132,7 @@ func (rt *RoundTripper) logResponse(original io.ReadCloser, contentType string) 
 	var bs bytes.Buffer
 	defer original.Close()
 
-	_, err := io.Copy(&bs, original)
-	if err != nil {
+	if _, err := io.Copy(&bs, original); err != nil {
 		return nil, err
 	}
 

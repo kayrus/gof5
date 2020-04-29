@@ -14,7 +14,7 @@ import (
 const listenAddr = "127.0.0.253"
 
 var (
-	// TODO: pass as a perameter to startDns
+	// TODO: pass as a parameter to startDns func
 	servers     []string
 	dnsSuffixes []string
 	origServers []string
@@ -51,15 +51,13 @@ func startDns(resolvConf []byte) {
 	log.Printf("Default DNS servers: %q", origServers)
 	go func() {
 		srv := &dns.Server{Addr: listenAddr + ":53", Net: "udp", Handler: dns.HandlerFunc(dnsUdpHandler)}
-		err := srv.ListenAndServe()
-		if err != nil {
+		if err := srv.ListenAndServe(); err != nil {
 			log.Fatalf("Failed to set udp listener %s", err)
 		}
 	}()
 	go func() {
 		srv := &dns.Server{Addr: listenAddr + ":53", Net: "tcp", Handler: dns.HandlerFunc(dnsTcpHandler)}
-		err := srv.ListenAndServe()
-		if err != nil {
+		if err := srv.ListenAndServe(); err != nil {
 			log.Fatalf("Failed to set tcp listener %s", err)
 		}
 	}()
