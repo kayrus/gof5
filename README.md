@@ -4,6 +4,7 @@
 
 * pppd binary must be installed
 * application must be executed as privileged root user
+* Linux only, pull requests to support MacOS are welcome
 
 ## HOWTO
 
@@ -22,9 +23,9 @@ A `routes.yaml` file must be placed in the current working directory with conten
 # experimental
 # dns enables internal dns proxy, which is not stable enough
 # omit "dns" to disable DNS proxy
-dns:
-- corp.int.
-- corp.
+#dns:
+#- corp.int.
+#- corp.
 routes:
 - 1.2.3.4
 - 1.2.3.5/32
