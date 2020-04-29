@@ -13,11 +13,13 @@ func main() {
 	var username string
 	var password string
 	var closeSession bool
+	var isHdlc bool
 	var debug bool
 	flag.StringVar(&server, "server", "", "")
 	flag.StringVar(&username, "username", "", "")
 	flag.StringVar(&password, "password", "", "")
 	flag.BoolVar(&closeSession, "close-session", false, "Close HTTPS VPN session on exit")
+	flag.BoolVar(&isHdlc, "hdlc", true, "hdlc")
 	flag.BoolVar(&debug, "debug", false, "Show debug logs")
 	flag.Parse()
 
@@ -40,7 +42,7 @@ func main() {
 	}
 
 	pkg.SetDebug(debug)
-	err := pkg.Connect(server, username, password, closeSession)
+	err := pkg.Connect(server, username, password, isHdlc, closeSession)
 	if err != nil {
 		log.Fatal(err)
 	}

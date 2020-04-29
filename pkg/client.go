@@ -22,6 +22,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/vishvananda/netlink"
+	"github.com/zaninime/go-hdlc"
 	"gopkg.in/yaml.v2"
 )
 
@@ -200,7 +201,60 @@ func tunToHttp(conn *tls.Conn, pppd *os.File, errChan chan error) {
 	}
 }
 
-func Connect(server, username, password string, closeSession bool) error {
+// Encode F5 packet into pppd HDLC format
+// http->tun
+func hdlcHttpToTun(conn *tls.Conn, pppd *os.File, errChan chan error) {
+	buf := make([]byte, 1500)
+	for {
+		rn, err := conn.Read(buf)
+		if err != nil {
+			errChan <- fmt.Errorf("fatal read http: %s", err)
+			return
+		}
+		if debug {
+			log.Printf("Read %d bytes from http:\n%s", rn, hex.Dump(buf[:rn]))
+		}
+		enc := hdlc.NewEncoder(pppd)
+		// TODO: parse packet header
+		wn, err := enc.WriteFrame(hdlc.Encapsulate(buf[6:rn], true))
+		if err != nil {
+			errChan <- fmt.Errorf("fatal write to pppd: %s", err)
+			return
+		}
+		if debug {
+			log.Printf("Sent %d bytes to pppd", wn)
+		}
+	}
+}
+
+// Decode pppd HDLC format into F5 packet
+// tun->http
+func hdlcTunToHttp(conn *tls.Conn, pppd *os.File, errChan chan error) {
+	for {
+		dec := hdlc.NewDecoder(pppd)
+		frame, err := dec.ReadFrame()
+		if err != nil {
+			errChan <- fmt.Errorf("fatal read pppd: %s", err)
+			return
+		}
+		rn := len(frame.Payload)
+		// TODO: use proper buffer + binary.BigEndian
+		buf := append([]byte{0xf5, 0x00, 0x00, byte(rn), 0xff, 0x03}, frame.Payload...)
+		if debug {
+			log.Printf("Read %d bytes from pppd:\n%s", rn, hex.Dump(buf))
+		}
+		wn, err := conn.Write(buf)
+		if err != nil {
+			errChan <- fmt.Errorf("fatal write to http: %s", err)
+			return
+		}
+		if debug {
+			log.Printf("Sent %d bytes to http", wn)
+		}
+	}
+}
+
+func Connect(server, username, password string, isHdlc, closeSession bool) error {
 	u, err := url.Parse(fmt.Sprintf("https://%s", server))
 	if err != nil {
 		return fmt.Errorf("failed to parse server hostname: %s", err)
@@ -302,8 +356,12 @@ func Connect(server, username, password string, closeSession bool) error {
 		return fmt.Errorf("failed to save cookies: %s", err)
 	}
 
+	hdlcFraming := "no"
+	if isHdlc {
+		hdlcFraming = "yes"
+	}
 	// TLS
-	purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&Z=%s", server, favorite.Object.SessionID, favorite.Object.UrZ))
+	purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&Z=%s&hdlc_framing=%s", server, favorite.Object.SessionID, favorite.Object.UrZ, hdlcFraming))
 	//hostname := base64.StdEncoding.EncodeToString([]byte("my-hostname"))
 	//purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s", server, favorite.Object.SessionID, hostname, favorite.Object.HDLCFraming, "yes", "no", favorite.Object.UrZ))
 	if err != nil {
@@ -501,11 +559,19 @@ func Connect(server, username, password string, closeSession bool) error {
 		errChan <- cmd.Wait()
 	}()
 
-	// http->tun go routine
-	go httpToTun(conn, pppd, errChan)
+	if isHdlc {
+		// http->tun go routine
+		go httpToTun(conn, pppd, errChan)
 
-	// tun->http go routine
-	go tunToHttp(conn, pppd, errChan)
+		// tun->http go routine
+		go tunToHttp(conn, pppd, errChan)
+	} else {
+		// http->tun go routine
+		go hdlcHttpToTun(conn, pppd, errChan)
+
+		// tun->http go routine
+		go hdlcTunToHttp(conn, pppd, errChan)
+	}
 
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 	<-termChan
