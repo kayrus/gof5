@@ -73,7 +73,7 @@ func dnsHandler(w dns.ResponseWriter, m *dns.Msg, config *Config, proto string) 
 	for _, suffix := range config.DNS {
 		if strings.HasSuffix(m.Question[0].Name, suffix) {
 			if debug {
-				log.Printf("Resoving %q using VPN DNS", m.Question[0].Name)
+				log.Printf("Resolving %q using VPN DNS", m.Question[0].Name)
 			}
 			for _, s := range config.vpnServers {
 				if err := handleCustom(w, m, c, s); err == nil {
