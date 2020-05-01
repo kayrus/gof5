@@ -90,17 +90,9 @@ func dnsHandler(w dns.ResponseWriter, m *dns.Msg, proto string) {
 func handleCustom(w dns.ResponseWriter, o *dns.Msg, c *dns.Client, s string) error {
 	m := new(dns.Msg)
 	o.CopyTo(m)
-	v := m.Question[0].Name
-	m.Question[0].Name = strings.ToUpper(v)
 	r, _, err := c.Exchange(m, s+":53")
 	if r == nil || err != nil {
-		return fmt.Errorf("failed to resolve %q", v)
-	}
-	if len(r.Question) > 0 {
-		r.Question[0].Name = strings.ToLower(r.Question[0].Name)
-		for i := 0; i < len(r.Answer); i++ {
-			r.Answer[i].Header().Name = strings.ToLower(r.Answer[i].Header().Name)
-		}
+		return fmt.Errorf("failed to resolve %q", m.Question[0].Name)
 	}
 	w.WriteMsg(r)
 	return nil
