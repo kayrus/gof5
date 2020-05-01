@@ -11,7 +11,7 @@ export CGO_ENABLED:=0
 
 build: gopath/src/$(PKG) fmt vet
 	GOOS=linux go build -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME) ./cmd
-	GOOS=darwin go build -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME)_darwin ./cmd
+	#GOOS=darwin go build -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME)_darwin ./cmd
 	#GOOS=windows go build -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME).exe ./cmd
 
 docker:

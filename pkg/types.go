@@ -172,6 +172,20 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		"ipcp-accept-local",
 		"ipcp-accept-remote",
 		"nodefaultroute",
+		//"lcp-echo-interval", "1",
+		//"lcp-echo-failure", "20",
+		//"lcp-echo-adaptive",
+		//"lcp-echo-interval", "0",
+		//"defaultroute",
+		/*
+			// nocompression
+			"novj",
+			"novjccomp",
+			"noaccomp",
+			"noccp",
+			"nopcomp",
+			"nopredictor1",
+		*/
 		"nodeflate", // Protocol-Reject for 'Compression Control Protocol' (0x80fd) received
 		"nobsdcomp", // Protocol-Reject for 'Compression Control Protocol' (0x80fd) received
 	}

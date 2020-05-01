@@ -18,6 +18,7 @@ import (
 
 	"github.com/vishvananda/netlink"
 	"github.com/zaninime/go-hdlc"
+	"golang.org/x/net/ipv4"
 )
 
 // TODO: handle "fatal read pppd: read /dev/ptmx: input/output error"
@@ -42,6 +43,7 @@ type vpnLink struct {
 func initConnection(server string, config *Config, favorite *Favorite) (*tls.Conn, error) {
 	// TLS
 	//purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&Z=%s&hdlc_framing=%s", server, favorite.Object.SessionID, favorite.Object.UrZ, hdlcFraming))
+	// favorite.Object.IPv6 = false
 	hostname := base64.StdEncoding.EncodeToString([]byte("my-hostname"))
 	purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s", server, favorite.Object.SessionID, hostname, config.HDLC, favorite.Object.IPv4, favorite.Object.IPv6, favorite.Object.UrZ))
 	if err != nil {
@@ -106,6 +108,30 @@ func initConnection(server string, config *Config, favorite *Favorite) (*tls.Con
 	return conn, nil
 }
 
+func (l *vpnLink) decodeHDLC(buf []byte, src string) {
+	tmp := bytes.NewBuffer(buf)
+	frame, err := hdlc.NewDecoder(tmp).ReadFrame()
+	if err != nil {
+		log.Printf("fatal decode HDLC frame from %s: %s", src, err)
+		return
+		/*
+			l.errChan <- fmt.Errorf("fatal decode HDLC frame from %s: %s", source, err)
+			return
+		*/
+	}
+	log.Printf("Decoded %t prefix HDLC frame from %s:\n%s", frame.HasAddressCtrlPrefix, src, hex.Dump(frame.Payload))
+	h, err := ipv4.ParseHeader(frame.Payload[:])
+	if err != nil {
+		log.Printf("fatal to parse TCP header from %s: %s", src, err)
+		return
+		/*
+			l.errChan <- fmt.Errorf("fatal to parse TCP header: %s", err)
+			return
+		*/
+	}
+	log.Printf("TCP: %s", h)
+}
+
 // http->tun
 func (l *vpnLink) httpToTun(conn *tls.Conn, pppd *os.File) {
 	buf := make([]byte, 1500)
@@ -120,7 +146,8 @@ func (l *vpnLink) httpToTun(conn *tls.Conn, pppd *os.File) {
 				return
 			}
 			if debug {
-				log.Printf("Read %d bytes from http:\n%s", rn, hex.Dump(buf[:rn]))
+				l.decodeHDLC(buf[:rn], "http")
+				//log.Printf("Read %d bytes from http:\n%s", rn, hex.Dump(buf[:rn]))
 			}
 			wn, err := pppd.Write(buf[:rn])
 			if err != nil {
@@ -149,6 +176,7 @@ func (l *vpnLink) tunToHttp(conn *tls.Conn, pppd *os.File) {
 			}
 			if debug {
 				log.Printf("Read %d bytes from pppd:\n%s", rn, hex.Dump(buf[:rn]))
+				l.decodeHDLC(buf[:rn], "pppd")
 			}
 			wn, err := conn.Write(buf[:rn])
 			if err != nil {
