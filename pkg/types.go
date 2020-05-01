@@ -13,6 +13,7 @@ const (
 	resolvPath   = "/etc/resolv.conf"
 	cookiesPath  = "cookies"
 	userAgent    = "Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.1a2pre) Gecko/2008073000 Shredder/3.0a2pre ThunderBrowse/3.2.1.8"
+	userAgentVPN = "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; Trident/6.0; F5 Networks Client)"
 )
 
 var (
@@ -50,12 +51,14 @@ type Favorite struct {
 	Object Object `xml:"object"`
 }
 
+type Bool bool
+
 type Object struct {
 	SessionID                      string `xml:"Session_ID"`
-	IpV4                           bool   `xml:"IPV4_0,string"`
-	IpV6                           bool   `xml:"IPV6_0,string"`
+	IPv4                           Bool   `xml:"IPV4_0,string"`
+	IPv6                           Bool   `xml:"IPV6_0,string"`
 	UrZ                            string `xml:"ur_Z"`
-	HDLCFraming                    string `xml:"hdlc_framing,string"`
+	HDLCFraming                    Bool   `xml:"-"`
 	Host                           string `xml:"host0"`
 	Port                           string `xml:"port0"`
 	TunnelHost                     string `xml:"tunnel_host0"`
@@ -108,6 +111,15 @@ type Filter struct {
 type Config struct {
 	DNS    []string     `yaml:"dns"`
 	Routes []*net.IPNet `yaml:"-"`
+}
+
+type Cookies map[string][]string
+
+func (b Bool) String() string {
+	if b {
+		return "yes"
+	}
+	return "no"
 }
 
 func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -180,6 +192,7 @@ func (o *Object) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		ExcludeSubnets  string `xml:"ExcludeSubnets0"`
 		ExcludeSubnets6 string `xml:"ExcludeSubnets6_0"`
 		TrafficControl  string `xml:"TrafficControl0"`
+		HDLCFraming     string `xml:"hdlc_framing"`
 	}
 
 	if err := d.DecodeElement(&s, &start); err != nil {
@@ -201,6 +214,15 @@ func (o *Object) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	o.DNS6 = strings.FieldsFunc(strings.TrimSpace(s.DNS6), splitFunc)
 	o.ExcludeSubnets = processCIDRs(s.ExcludeSubnets)
 	o.ExcludeSubnets6 = processCIDRs(s.ExcludeSubnets6)
+
+	switch v := strings.ToLower(s.HDLCFraming); v {
+	case "yes":
+		o.HDLCFraming = true
+	case "no":
+		o.HDLCFraming = false
+	default:
+		return fmt.Errorf("cannot parse boolean: %s", v)
+	}
 
 	return nil
 }

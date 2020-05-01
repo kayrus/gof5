@@ -42,7 +42,7 @@ func main() {
 	}
 
 	pkg.SetDebug(debug)
-	err := pkg.Connect(server, username, password, isHdlc, closeSession)
+	err := pkg.Connect(server, username, password, pkg.Bool(isHdlc), closeSession)
 	if err != nil {
 		log.Fatal(err)
 	}

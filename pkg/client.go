@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
@@ -28,7 +29,7 @@ import (
 
 func login(c *http.Client, server, username, password string) error {
 	log.Printf("Logging in...")
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s?outform=xml", server), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s", server), nil)
 	req.Proto = "HTTP/1.0"
 	req.Header.Set("User-Agent", userAgent)
 	resp, err := c.Do(req)
@@ -58,6 +59,12 @@ func login(c *http.Client, server, username, password string) error {
 	}
 	resp.Body.Close()
 
+	/*
+		if resp.StatusCode == 302 && resp.Header.Get("Location") == "/my.policy" {
+			return nil
+		}
+	*/
+
 	// TODO: parse response 302 location and error code
 	if resp.StatusCode == 302 || bytes.Contains(body, []byte("Session Expired/Timeout")) {
 		return fmt.Errorf("wrong credentials")
@@ -66,29 +73,50 @@ func login(c *http.Client, server, username, password string) error {
 	return nil
 }
 
-func readCookies(c *http.Client, u *url.URL) {
+func parseCookies() Cookies {
+	cookies := make(Cookies)
+
 	v, err := ioutil.ReadFile(path.Join(currDir, cookiesPath))
 	if err != nil {
 		log.Printf("Cannot read cookies file: %v", err)
-		return
+		return cookies
 	}
 
-	var cookies []*http.Cookie
-	for _, c := range strings.Split(string(v), "\n") {
-		if v := strings.Split(c, "="); len(v) == 2 {
-			cookies = append(cookies, &http.Cookie{Name: v[0], Value: v[1]})
+	if err = yaml.Unmarshal(v, &cookies); err != nil {
+		log.Printf("Cannot parse cookies: %v", err)
+	}
+
+	return cookies
+}
+
+func readCookies(c *http.Client, u *url.URL) {
+	v := parseCookies()
+	if v, ok := v[u.Host]; ok {
+		var cookies []*http.Cookie
+		for _, c := range v {
+			if v := strings.Split(c, "="); len(v) == 2 {
+				cookies = append(cookies, &http.Cookie{Name: v[0], Value: v[1]})
+			}
 		}
+		c.Jar.SetCookies(u, cookies)
 	}
-
-	c.Jar.SetCookies(u, cookies)
 }
 
 func saveCookies(c *http.Client, u *url.URL) error {
-	var cookies []string
+	raw := parseCookies()
+	// empty current cookies list
+	raw[u.Host] = nil
+	// write down new cookies
 	for _, c := range c.Jar.Cookies(u) {
-		cookies = append(cookies, c.String())
+		raw[u.Host] = append(raw[u.Host], c.String())
 	}
-	return ioutil.WriteFile(path.Join(currDir, cookiesPath), []byte(strings.Join(cookies, "\n")), 0600)
+
+	cookies, err := yaml.Marshal(&raw)
+	if err != nil {
+		return fmt.Errorf("cannot marshal cookies: %v", err)
+	}
+
+	return ioutil.WriteFile(path.Join(currDir, cookiesPath), cookies, 0600)
 }
 
 func parseProfile(body []byte) (string, error) {
@@ -255,7 +283,7 @@ func hdlcTunToHttp(conn *tls.Conn, pppd *os.File, errChan chan error) {
 	}
 }
 
-func Connect(server, username, password string, isHdlc, closeSession bool) error {
+func Connect(server, username, password string, isHdlc Bool, closeSession bool) error {
 	u, err := url.Parse(fmt.Sprintf("https://%s", server))
 	if err != nil {
 		return fmt.Errorf("failed to parse server hostname: %s", err)
@@ -308,7 +336,7 @@ func Connect(server, username, password string, isHdlc, closeSession bool) error
 			return fmt.Errorf("failed to login: %s", err)
 		}
 	} else {
-		log.Printf("Reusing saved HTTPS VPN session")
+		log.Printf("Reusing saved HTTPS VPN session for %s", u.Host)
 	}
 
 	resp, err := getProfiles(c, server)
@@ -358,14 +386,10 @@ func Connect(server, username, password string, isHdlc, closeSession bool) error
 		return fmt.Errorf("failed to save cookies: %s", err)
 	}
 
-	hdlcFraming := "no"
-	if isHdlc {
-		hdlcFraming = "yes"
-	}
 	// TLS
 	//purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&Z=%s&hdlc_framing=%s", server, favorite.Object.SessionID, favorite.Object.UrZ, hdlcFraming))
-	//hostname := base64.StdEncoding.EncodeToString([]byte("my-hostname"))
-	purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s", server, favorite.Object.SessionID, hdlcFraming, "yes", "yes", favorite.Object.UrZ))
+	hostname := base64.StdEncoding.EncodeToString([]byte("my-hostname"))
+	purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s", server, favorite.Object.SessionID, hostname, isHdlc, favorite.Object.IPv4, favorite.Object.IPv6, favorite.Object.UrZ))
 	if err != nil {
 		return fmt.Errorf("failed to parse connection VPN: %s", err)
 	}
@@ -379,13 +403,14 @@ func Connect(server, username, password string, isHdlc, closeSession bool) error
 	}
 	defer conn.Close()
 
-	str := fmt.Sprintf("GET %s HTTP/1.0\r\nHost: %s\r\n\r\n", purl.RequestURI(), server)
+	str := fmt.Sprintf("GET %s HTTP/1.0\r\nUser-Agent: %s\r\nHost: %s\r\n\r\n", purl.RequestURI(), userAgentVPN, server)
 	n, err := conn.Write([]byte(str))
 	if err != nil {
 		return fmt.Errorf("failed to send VPN session request: %s", err)
 	}
 
 	if debug {
+		log.Printf("URL: %s", str)
 		log.Printf("Sent %d bytes", n)
 	}
 
@@ -396,14 +421,18 @@ func Connect(server, username, password string, isHdlc, closeSession bool) error
 		return fmt.Errorf("failed to get initial VPN connection response: %s", err)
 	}
 
-	var clientIP, serverIP string
+	var clientIP, serverIP, clientIPv6, serverIPv6 string
 	for _, v := range strings.Split(string(buf), "\r\n") {
-		if v := strings.Split(v, ":"); len(v) == 2 {
+		if v := strings.SplitN(v, ":", 2); len(v) == 2 {
 			switch v[0] {
 			case "X-VPN-client-IP":
-				clientIP = v[1]
+				clientIP = strings.TrimSpace(v[1])
 			case "X-VPN-server-IP":
-				serverIP = v[1]
+				serverIP = strings.TrimSpace(v[1])
+			case "X-VPN-client-IPv6":
+				clientIPv6 = strings.TrimSpace(v[1])
+			case "X-VPN-server-IPv6":
+				serverIPv6 = strings.TrimSpace(v[1])
 			}
 		}
 	}
@@ -414,6 +443,10 @@ func Connect(server, username, password string, isHdlc, closeSession bool) error
 
 		log.Printf("Client IP: %s", clientIP)
 		log.Printf("Server IP: %s", serverIP)
+		if favorite.Object.IPv6 {
+			log.Printf("Client IPv6: %s", clientIPv6)
+			log.Printf("Server IPv6: %s", serverIPv6)
+		}
 	}
 
 	// VPN
@@ -421,21 +454,33 @@ func Connect(server, username, password string, isHdlc, closeSession bool) error
 		"logfd", "2",
 		"noauth",
 		"nodetach",
-		"crtscts",
-		"passive",
+		//"crtscts",
+		//"passive",
+		//"local",
 		"ipcp-accept-local",
 		"ipcp-accept-remote",
-		"ipv6cp-accept-local",
-		"ipv6cp-accept-remote",
-		"local",
-		"nodeflate",
 		"nodefaultroute",
+		"nodeflate", // Protocol-Reject for 'Compression Control Protocol' (0x80fd) received
+		"nobsdcomp", // Protocol-Reject for 'Compression Control Protocol' (0x80fd) received
+	}
+	if favorite.Object.IPv6 {
+		args = append(args,
+			"ipv6cp-accept-local",
+			"ipv6cp-accept-remote",
+			"+ipv6",
+		)
+	} else {
+		args = append(args,
+			// TODO: clarify why it doesn't work
+			"noipv6", // Unsupported protocol 'IPv6 Control Protocol' (0x8057) received
+		)
 	}
 	if debug {
 		args = append(args,
 			"debug",
 			"kdebug", "1",
 		)
+		log.Printf("pppd args: %q", args)
 	}
 	cmd := exec.Command("pppd", args...)
 	stderr, err := cmd.StderrPipe()
