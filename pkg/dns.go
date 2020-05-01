@@ -15,14 +15,7 @@ const listenAddr = "127.0.0.253"
 
 // TODO: reverse DNS support, e.g. "in-addr.arpa"
 
-var (
-	// TODO: pass as a parameter to startDns func
-	servers     []string
-	dnsSuffixes []string
-	origServers []string
-)
-
-func parseResolvConf(resolvConf []byte) {
+func parseResolvConf(config *Config, resolvConf []byte) {
 	buf := bufio.NewReader(bytes.NewReader(resolvConf))
 	for line, isPrefix, err := buf.ReadLine(); err == nil && isPrefix == false; line, isPrefix, err = buf.ReadLine() {
 		if len(line) > 0 && (line[0] == ';' || line[0] == '#') {
@@ -35,22 +28,31 @@ func parseResolvConf(resolvConf []byte) {
 		}
 		switch f[0] {
 		case "nameserver":
-			if len(f) > 1 && len(origServers) < 3 {
-				if net.ParseIP(f[1]).To4() != nil {
-					origServers = append(origServers, f[1])
-				} else if net.ParseIP(f[1]).To16() != nil {
-					origServers = append(origServers, f[1])
+			if len(f) > 1 && len(config.origServers) < 3 {
+				if v := net.ParseIP(f[1]); v.To4() != nil {
+					config.origServers = append(config.origServers, v)
+				} else if v.To16() != nil {
+					config.origServers = append(config.origServers, v)
 				}
 			}
 		}
 	}
 }
 
-func startDns(resolvConf []byte) {
-	parseResolvConf(resolvConf)
+func startDns(config *Config, resolvConf []byte) {
+	parseResolvConf(config, resolvConf)
 	log.Printf("Serving DNS proxy on %s:53", listenAddr)
-	log.Printf("Forwarding %q DNS requests to %q", dnsSuffixes, servers)
-	log.Printf("Default DNS servers: %q", origServers)
+	log.Printf("Forwarding %q DNS requests to %q", config.DNS, config.vpnServers)
+	log.Printf("Default DNS servers: %q", config.origServers)
+
+	dnsUdpHandler := func(w dns.ResponseWriter, m *dns.Msg) {
+		dnsHandler(w, m, config, "udp")
+	}
+
+	dnsTcpHandler := func(w dns.ResponseWriter, m *dns.Msg) {
+		dnsHandler(w, m, config, "tcp")
+	}
+
 	go func() {
 		srv := &dns.Server{Addr: listenAddr + ":53", Net: "udp", Handler: dns.HandlerFunc(dnsUdpHandler)}
 		if err := srv.ListenAndServe(); err != nil {
@@ -65,43 +67,35 @@ func startDns(resolvConf []byte) {
 	}()
 }
 
-func dnsHandler(w dns.ResponseWriter, m *dns.Msg, proto string) {
+func dnsHandler(w dns.ResponseWriter, m *dns.Msg, config *Config, proto string) {
 	c := new(dns.Client)
 	c.Net = proto
-	for _, suffix := range dnsSuffixes {
+	for _, suffix := range config.DNS {
 		if strings.HasSuffix(m.Question[0].Name, suffix) {
 			if debug {
 				log.Printf("Resoving %q using VPN DNS", m.Question[0].Name)
 			}
-			for _, s := range servers {
+			for _, s := range config.vpnServers {
 				if err := handleCustom(w, m, c, s); err == nil {
 					return
 				}
 			}
 		}
 	}
-	for _, s := range origServers {
+	for _, s := range config.origServers {
 		if err := handleCustom(w, m, c, s); err == nil {
 			return
 		}
 	}
 }
 
-func handleCustom(w dns.ResponseWriter, o *dns.Msg, c *dns.Client, s string) error {
+func handleCustom(w dns.ResponseWriter, o *dns.Msg, c *dns.Client, ip net.IP) error {
 	m := new(dns.Msg)
 	o.CopyTo(m)
-	r, _, err := c.Exchange(m, s+":53")
+	r, _, err := c.Exchange(m, ip.String()+":53")
 	if r == nil || err != nil {
 		return fmt.Errorf("failed to resolve %q", m.Question[0].Name)
 	}
 	w.WriteMsg(r)
 	return nil
-}
-
-func dnsUdpHandler(w dns.ResponseWriter, m *dns.Msg) {
-	dnsHandler(w, m, "udp")
-}
-
-func dnsTcpHandler(w dns.ResponseWriter, m *dns.Msg) {
-	dnsHandler(w, m, "tcp")
 }

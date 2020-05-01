@@ -9,7 +9,7 @@ export GO111MODULE:=off
 export GOPATH:=$(PWD):$(PWD)/gopath
 export CGO_ENABLED:=0
 
-build: gopath/src/$(PKG) fmt
+build: gopath/src/$(PKG) fmt vet
 	GOOS=linux go build -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME) ./cmd
 	GOOS=darwin go build -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME)_darwin ./cmd
 	#GOOS=windows go build -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME).exe ./cmd
@@ -19,6 +19,9 @@ docker:
 
 fmt:
 	gofmt -s -w cmd pkg
+
+vet:
+	cd gopath/src/$(PKG) && go vet ./cmd ./pkg
 
 gopath/src/$(PKG):
 	mkdir -p gopath/src/$(shell dirname $(PKG))

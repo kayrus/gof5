@@ -3,22 +3,15 @@ package pkg
 import (
 	"encoding/xml"
 	"fmt"
+	"log"
 	"net"
 	"net/url"
+	"os/user"
 	"strings"
 )
 
-const (
-	routesConfig = "routes.yaml"
-	resolvPath   = "/etc/resolv.conf"
-	cookiesPath  = "cookies"
-	userAgent    = "Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.1a2pre) Gecko/2008073000 Shredder/3.0a2pre ThunderBrowse/3.2.1.8"
-	userAgentVPN = "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; Trident/6.0; F5 Networks Client)"
-)
-
 var (
-	currDir string
-	debug   bool
+	debug bool
 )
 
 func SetDebug(d bool) {
@@ -54,33 +47,29 @@ type Favorite struct {
 type Bool bool
 
 type Object struct {
-	SessionID                      string `xml:"Session_ID"`
-	IPv4                           Bool   `xml:"IPV4_0,string"`
-	IPv6                           Bool   `xml:"IPV6_0,string"`
-	UrZ                            string `xml:"ur_Z"`
-	HDLCFraming                    Bool   `xml:"-"`
-	Host                           string `xml:"host0"`
-	Port                           string `xml:"port0"`
-	TunnelHost                     string `xml:"tunnel_host0"`
-	TunnelPort                     string `xml:"tunnel_port0"`
-	Add2Hosts                      string `xml:"Add2Hosts0"`
-	DNSSuffix                      string `xml:"DNSSuffix0"`
-	DNSRegisterConnection          int    `xml:"DNSRegisterConnection0"`
-	DNSUseDNSSuffixForRegistration int    `xml:"DNSUseDNSSuffixForRegistration0"`
-	SplitTunneling                 int    `xml:"SplitTunneling0"`
-	DNSSPlit                       string `xml:"DNS_SPLIT0"`
-	AllowLocalSubnetAccess         bool   `xml:"AllowLocalSubnetAccess0,string"`
-	AllowLocalDNSServersAccess     bool   `xml:"AllowLocalDNSServersAccess0,string"`
-	AllowLocalDHCPAccess           bool   `xml:"AllowLocalDHCPAccess0,string"`
-	/*
-		DNS             []net.IP       `xml:"-"`
-		DNS6            []net.IP       `xml:"-"`
-	*/
-	DNS             []string       `xml:"-"`
-	DNS6            []string       `xml:"-"`
-	ExcludeSubnets  []*net.IPNet   `xml:"-"`
-	ExcludeSubnets6 []*net.IPNet   `xml:"-"`
-	TrafficControl  TrafficControl `xml:"-"`
+	SessionID                      string         `xml:"Session_ID"`
+	IPv4                           Bool           `xml:"IPV4_0,string"`
+	IPv6                           Bool           `xml:"IPV6_0,string"`
+	UrZ                            string         `xml:"ur_Z"`
+	HDLCFraming                    Bool           `xml:"-"`
+	Host                           string         `xml:"host0"`
+	Port                           string         `xml:"port0"`
+	TunnelHost                     string         `xml:"tunnel_host0"`
+	TunnelPort                     string         `xml:"tunnel_port0"`
+	Add2Hosts                      string         `xml:"Add2Hosts0"`
+	DNSSuffix                      string         `xml:"DNSSuffix0"`
+	DNSRegisterConnection          int            `xml:"DNSRegisterConnection0"`
+	DNSUseDNSSuffixForRegistration int            `xml:"DNSUseDNSSuffixForRegistration0"`
+	SplitTunneling                 int            `xml:"SplitTunneling0"`
+	DNSSPlit                       string         `xml:"DNS_SPLIT0"`
+	AllowLocalSubnetAccess         bool           `xml:"AllowLocalSubnetAccess0,string"`
+	AllowLocalDNSServersAccess     bool           `xml:"AllowLocalDNSServersAccess0,string"`
+	AllowLocalDHCPAccess           bool           `xml:"AllowLocalDHCPAccess0,string"`
+	DNS                            []net.IP       `xml:"-"`
+	DNS6                           []net.IP       `xml:"-"`
+	ExcludeSubnets                 []*net.IPNet   `xml:"-"`
+	ExcludeSubnets6                []*net.IPNet   `xml:"-"`
+	TrafficControl                 TrafficControl `xml:"-"`
 }
 
 type TrafficControl struct {
@@ -109,8 +98,24 @@ type Filter struct {
 }
 
 type Config struct {
-	DNS    []string     `yaml:"dns"`
-	Routes []*net.IPNet `yaml:"-"`
+	// defaults to true
+	HDLC     Bool         `yaml:"hdlc"`
+	DNS      []string     `yaml:"dns"`
+	Routes   []*net.IPNet `yaml:"-"`
+	PPPdArgs []string     `yaml:"pppdArgs"`
+	// internal parameters
+	// current user or sudo user
+	user *user.User
+	// config path
+	path string
+	// current user or sudo user UID
+	uid int
+	// current user or sudo user GID
+	gid int
+	// list of DNS servers, returned by F5
+	vpnServers []net.IP
+	// list of DNS servers, parsed from /etc/resolv.conf
+	origServers []net.IP
 }
 
 type Cookies map[string][]string
@@ -126,8 +131,10 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type tmp Config
 	var s struct {
 		tmp
-		DNS    []string `yaml:"dns"`
-		Routes []string `yaml:"routes"`
+		HDLC     *bool    `yaml:"hdlc"`
+		DNS      []string `yaml:"dns"`
+		Routes   []string `yaml:"routes"`
+		PPPdArgs []string `yaml:"pppdArgs"`
 	}
 
 	if err := unmarshal(&s); err != nil {
@@ -135,18 +142,42 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	*r = Config(s.tmp)
+
+	if s.HDLC == nil {
+		// defaults to true
+		r.HDLC = true
+	} else {
+		r.HDLC = Bool(*s.HDLC)
+	}
+
+	// TODO: check DNS trailing dots
 	r.DNS = s.DNS
 
 	for _, v := range s.Routes {
-		// TODO: change logic?
-		if !strings.Contains(v, "/") {
-			v += "/32"
-		}
-		_, cidr, err := net.ParseCIDR(v)
+		cidr, err := parseCIDR(v)
 		if err != nil {
 			return fmt.Errorf("Cannot parse %s CIDR: %s", v, err)
 		}
 		r.Routes = append(r.Routes, cidr)
+	}
+
+	// default pppd arguments
+	r.PPPdArgs = []string{
+		"logfd", "2",
+		"noauth",
+		"nodetach",
+		//"crtscts",
+		//"passive",
+		//"local",
+		"ipcp-accept-local",
+		"ipcp-accept-remote",
+		"nodefaultroute",
+		"nodeflate", // Protocol-Reject for 'Compression Control Protocol' (0x80fd) received
+		"nobsdcomp", // Protocol-Reject for 'Compression Control Protocol' (0x80fd) received
+	}
+	if len(s.PPPdArgs) > 0 {
+		// extra pppd args
+		r.PPPdArgs = append(r.PPPdArgs, s.PPPdArgs...)
 	}
 
 	return nil
@@ -176,11 +207,26 @@ func processCIDRs(cidrs string) []*net.IPNet {
 					IP:   net.ParseIP(v[0]),
 					Mask: net.IPMask(net.ParseIP(v[1])),
 				})
+				continue
 			}
+			log.Printf("Cannot parse %q CIDR", v)
 		}
 		return t
 	}
 	return nil
+}
+
+func parseCIDR(s string) (*net.IPNet, error) {
+	_, cidr, err := net.ParseCIDR(s)
+	if err != nil {
+		// fallback to a single IP
+		ip := net.ParseIP(s)
+		if ip != nil {
+			return &net.IPNet{IP: ip, Mask: net.CIDRMask(32, 32)}, nil
+		}
+		return nil, fmt.Errorf("Cannot parse %s CIDR: %s", s, err)
+	}
+	return cidr, nil
 }
 
 func (o *Object) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
@@ -206,12 +252,8 @@ func (o *Object) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		}
 	}
 
-	/*
-		o.DNS = processIPs(s.DNS)
-		o.DNS6 = processIPs(s.DNS6)
-	*/
-	o.DNS = strings.FieldsFunc(strings.TrimSpace(s.DNS), splitFunc)
-	o.DNS6 = strings.FieldsFunc(strings.TrimSpace(s.DNS6), splitFunc)
+	o.DNS = processIPs(s.DNS)
+	o.DNS6 = processIPs(s.DNS6)
 	o.ExcludeSubnets = processCIDRs(s.ExcludeSubnets)
 	o.ExcludeSubnets6 = processCIDRs(s.ExcludeSubnets6)
 

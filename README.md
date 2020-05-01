@@ -13,11 +13,11 @@ $ make
 $ sudo ./bin/gof5 --server server --username username --password token --debug
 ```
 
-Username and password will be used only, when `cookies` file doesn't contain previously saved HTTPS session cookies or when the saved session is expired or explicitly terminated (`--close-session`).
+Username and password will be used only, when `~/.gof5/cookies.yaml` file doesn't contain previously saved HTTPS session cookies or when the saved session is expired or explicitly terminated (`--close-session`).
 
 Use `--close-session` flag to terminate an HTTPS VPN session on exit. Next startup will require a valid username/password.
 
-A `routes.yaml` file must be placed in the current working directory with contents like:
+A `~/.gof5/config.yaml` file must exist with contents like:
 
 ```yaml
 # experimental
