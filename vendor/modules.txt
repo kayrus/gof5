@@ -8,6 +8,9 @@ github.com/miekg/dns
 github.com/sigurn/crc16
 # github.com/sigurn/utils v0.0.0-20151230205143-f19e41f79f8f
 github.com/sigurn/utils
+# github.com/songgao/water v0.0.0-20200317203138-2b4b6d7c09d8
+## explicit
+github.com/songgao/water
 # github.com/vishvananda/netlink v1.1.0
 ## explicit
 github.com/vishvananda/netlink
@@ -21,6 +24,7 @@ github.com/zaninime/go-hdlc
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/ed25519/internal/edwards25519
 # golang.org/x/net v0.0.0-20190923162816-aa69164e4478
+## explicit
 golang.org/x/net/bpf
 golang.org/x/net/internal/iana
 golang.org/x/net/internal/socket
@@ -30,6 +34,7 @@ golang.org/x/net/ipv6
 ## explicit
 golang.org/x/sys/unix
 golang.org/x/sys/windows
+golang.org/x/sys/windows/registry
 # gopkg.in/yaml.v2 v2.2.8
 ## explicit
 gopkg.in/yaml.v2

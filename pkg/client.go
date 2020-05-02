@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -10,7 +11,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
-	"os"
 	"os/exec"
 	"os/signal"
 	"strings"
@@ -166,8 +166,14 @@ func Connect(server, username, password string, closeSession bool) error {
 
 	if debug {
 		client.Transport = &RoundTripper{
-			Rt:     &http.Transport{},
+			Rt: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: false},
+			},
 			Logger: &logger{},
+		}
+	} else {
+		client.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: false},
 		}
 	}
 
@@ -231,75 +237,76 @@ func Connect(server, username, password string, closeSession bool) error {
 	}
 
 	// TLS
-	conn, err := initConnection(server, config, favorite)
+	link, err := initConnection(server, config, favorite)
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer link.conn.Close()
 
-	// VPN
-	if favorite.Object.IPv6 {
-		config.PPPdArgs = append(config.PPPdArgs,
-			"ipv6cp-accept-local",
-			"ipv6cp-accept-remote",
-			"+ipv6",
-		)
-	} else {
-		config.PPPdArgs = append(config.PPPdArgs,
-			// TODO: clarify why it doesn't work
-			"noipv6", // Unsupported protocol 'IPv6 Control Protocol' (0x8057) received
-		)
-	}
-	if debug {
-		config.PPPdArgs = append(config.PPPdArgs,
-			"debug",
-			"kdebug", "1",
-		)
-		log.Printf("pppd args: %q", config.PPPdArgs)
-	}
-	cmd := exec.Command("pppd", config.PPPdArgs...)
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("cannot allocate stderr pipe: %s", err)
-	}
+	var cmd *exec.Cmd
+	if config.HDLC {
+		// VPN
+		if favorite.Object.IPv6 {
+			config.PPPdArgs = append(config.PPPdArgs,
+				"ipv6cp-accept-local",
+				"ipv6cp-accept-remote",
+				"+ipv6",
+			)
+		} else {
+			config.PPPdArgs = append(config.PPPdArgs,
+				// TODO: clarify why it doesn't work
+				"noipv6", // Unsupported protocol 'IPv6 Control Protocol' (0x8057) received
+			)
+		}
+		if debug {
+			config.PPPdArgs = append(config.PPPdArgs,
+				"debug",
+				"kdebug", "1",
+			)
+			log.Printf("pppd args: %q", config.PPPdArgs)
+		}
 
-	// define link channels
-	link := &vpnLink{
-		errChan:  make(chan error, 1),
-		upChan:   make(chan bool, 1),
-		nameChan: make(chan string, 1),
-		termChan: make(chan os.Signal, 1),
+		cmd = exec.Command("pppd", config.PPPdArgs...)
 	}
 
 	// error handler
 	go link.errorHandler()
 
-	// pppd log parser
-	go link.pppdLogParser(stderr)
+	// TODO: was here, check
+	//		// pppd log parser
+	//		go link.pppdLogParser(stderr)
 
 	// set routes and DNS
 	go link.waitAndConfig(config, favorite)
 
-	pppd, err := pty.Start(cmd)
-	if err != nil {
-		return fmt.Errorf("failed to start pppd: %s", err)
-	}
-
-	// terminate on pppd termination
-	go link.pppdWait(cmd)
-
 	if config.HDLC {
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			return fmt.Errorf("cannot allocate stderr pipe: %s", err)
+		}
+
+		// pppd log parser
+		go link.pppdLogParser(stderr)
+
+		pppd, err := pty.Start(cmd)
+		if err != nil {
+			return fmt.Errorf("failed to start pppd: %s", err)
+		}
+
+		// terminate on pppd termination
+		go link.pppdWait(cmd)
+
 		// http->tun go routine
-		go link.httpToTun(conn, pppd)
+		go link.hdlcHttpToTun(pppd)
 
 		// tun->http go routine
-		go link.tunToHttp(conn, pppd)
+		go link.hdlcTunToHttp(pppd)
 	} else {
 		// http->tun go routine
-		go link.hdlcHttpToTun(conn, pppd)
+		go link.httpToTun()
 
 		// tun->http go routine
-		go link.hdlcTunToHttp(conn, pppd)
+		go link.tunToHttp()
 	}
 
 	signal.Notify(link.termChan, syscall.SIGINT, syscall.SIGTERM)
@@ -307,8 +314,10 @@ func Connect(server, username, password string, closeSession bool) error {
 
 	link.restoreConfig(config)
 
-	// TODO: properly wait for pppd process on ctrl+c
-	cmd.Wait()
+	if config.HDLC {
+		// TODO: properly wait for pppd process on ctrl+c
+		cmd.Wait()
+	}
 
 	// close HTTPS VPN session
 	// next VPN connection will require credentials to auth

@@ -5,42 +5,50 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/url"
 	"os"
 	"os/exec"
 	"strings"
 	"syscall"
 
+	"github.com/songgao/water"
 	"github.com/vishvananda/netlink"
 	"github.com/zaninime/go-hdlc"
 	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 // TODO: handle "fatal read pppd: read /dev/ptmx: input/output error"
 
 const (
 	printGreen = "\033[1;32m%s\033[0m"
+	bufferSize = 1500
 )
 
 type vpnLink struct {
 	name        string
 	routesReady bool
 	link        netlink.Link
+	iface       *water.Interface
+	conn        *tls.Conn
 	resolvConf  []byte
 	ret         error
 	errChan     chan error
 	upChan      chan bool
 	nameChan    chan string
 	termChan    chan os.Signal
+	serverIPs   []net.IP
 }
 
 // init a TLS connection
-func initConnection(server string, config *Config, favorite *Favorite) (*tls.Conn, error) {
+func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink, error) {
 	// TLS
 	//purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&Z=%s&hdlc_framing=%s", server, favorite.Object.SessionID, favorite.Object.UrZ, hdlcFraming))
 	// favorite.Object.IPv6 = false
@@ -51,6 +59,11 @@ func initConnection(server string, config *Config, favorite *Favorite) (*tls.Con
 	}
 	conf := &tls.Config{
 		InsecureSkipVerify: false,
+	}
+
+	serverIPs, err := net.LookupIP(server)
+	if err != nil || len(serverIPs) == 0 {
+		return nil, fmt.Errorf("failed to resolve %s: %s", server, err)
 	}
 
 	conn, err := tls.Dial("tcp", fmt.Sprintf("%s:443", server), conf)
@@ -70,13 +83,12 @@ func initConnection(server string, config *Config, favorite *Favorite) (*tls.Con
 	}
 
 	// TODO: http.ReadResponse()
-	buf := make([]byte, 1500)
+	buf := make([]byte, bufferSize)
 	n, err = conn.Read(buf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get initial VPN connection response: %s", err)
 	}
 
-	// informative part
 	var clientIP, serverIP, clientIPv6, serverIPv6 string
 	for _, v := range strings.Split(string(buf), "\r\n") {
 		if v := strings.SplitN(v, ":", 2); len(v) == 2 {
@@ -105,7 +117,56 @@ func initConnection(server string, config *Config, favorite *Favorite) (*tls.Con
 		}
 	}
 
-	return conn, nil
+	// define link channels
+	link := &vpnLink{
+		conn:      conn,
+		serverIPs: serverIPs,
+		errChan:   make(chan error, 1),
+		upChan:    make(chan bool, 1),
+		nameChan:  make(chan string, 1),
+		termChan:  make(chan os.Signal, 1),
+	}
+
+	if !config.HDLC {
+		iface, err := water.New(water.Config{
+			DeviceType: water.TUN,
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		name := iface.Name()
+		//name := "tun0"
+
+		// TODO: verify mtu from LCP
+		ipRun("link", "set", "dev", name, "mtu", "1332")
+		ipRun("link", "set", "arp", "on", "dev", name)
+		ipRun("link", "set", "multicast", "off", "dev", name)
+		ipRun("addr", "add", clientIP, "peer", serverIP, "dev", name)
+		ipRun("link", "set", "dev", name, "up")
+		ipRun("-6", "addr", "flush", "dev", name)
+		// for test purposes redirect only to "10.0.0.0/8" CIDR and google IP
+		//ipRun("route", "add", "10.0.0.0/8", "via", clientIP, "proto", "unspec", "metric", "1", "dev", name)
+		//ipRun("route", "add", "8.8.8.8", "via", clientIP, "proto", "unspec", "metric", "1", "dev", name)
+		//  default route TODO: add dynamic ip r
+
+		// USE previous and next subnet https://github.com/apparentlymart/go-cidr
+
+		ipRun("route", "add", serverIPs[0].String(), "via", "192.168.1.1", "proto", "unspec", "metric", "1", "dev", "wlp2s0")
+		ipRun("route", "add", serverIPs[0].String(), "via", "172.17.0.1", "proto", "unspec", "metric", "1", "dev", "eth0")
+
+		link.iface = iface
+	}
+
+	return link, nil
+}
+
+func ipRun(args ...string) {
+	err := exec.Command("/sbin/ip", args...).Run()
+	if nil != err {
+		log.Printf("Error running /sbin/ip: %s", err)
+		//log.Fatalf("Error running /sbin/ip: %s", err)
+	}
 }
 
 func (l *vpnLink) decodeHDLC(buf []byte, src string) {
@@ -133,14 +194,14 @@ func (l *vpnLink) decodeHDLC(buf []byte, src string) {
 }
 
 // http->tun
-func (l *vpnLink) httpToTun(conn *tls.Conn, pppd *os.File) {
-	buf := make([]byte, 1500)
+func (l *vpnLink) hdlcHttpToTun(pppd *os.File) {
+	buf := make([]byte, bufferSize)
 	for {
 		select {
 		case <-l.termChan:
 			return
 		default:
-			rn, err := conn.Read(buf)
+			rn, err := l.conn.Read(buf)
 			if err != nil {
 				l.errChan <- fmt.Errorf("fatal read http: %s", err)
 				return
@@ -162,8 +223,8 @@ func (l *vpnLink) httpToTun(conn *tls.Conn, pppd *os.File) {
 }
 
 // tun->http
-func (l *vpnLink) tunToHttp(conn *tls.Conn, pppd *os.File) {
-	buf := make([]byte, 1500)
+func (l *vpnLink) hdlcTunToHttp(pppd *os.File) {
+	buf := make([]byte, bufferSize)
 	for {
 		select {
 		case <-l.termChan:
@@ -178,7 +239,7 @@ func (l *vpnLink) tunToHttp(conn *tls.Conn, pppd *os.File) {
 				log.Printf("Read %d bytes from pppd:\n%s", rn, hex.Dump(buf[:rn]))
 				l.decodeHDLC(buf[:rn], "pppd")
 			}
-			wn, err := conn.Write(buf[:rn])
+			wn, err := l.conn.Write(buf[:rn])
 			if err != nil {
 				l.errChan <- fmt.Errorf("fatal write to http: %s", err)
 				return
@@ -190,16 +251,397 @@ func (l *vpnLink) tunToHttp(conn *tls.Conn, pppd *os.File) {
 	}
 }
 
-// Encode F5 packet into pppd HDLC format
+func fromF5(link *vpnLink, buf []byte) error {
+	l := uint16(len(buf))
+	if l < 5 {
+		return fmt.Errorf("data is too small: %d", l)
+	}
+	if !(buf[0] == 0xf5 && buf[1] == 00) {
+		return fmt.Errorf("incorrect F5 header: %x", buf[:4])
+	}
+
+	// read 4 bytes (uint32 size) of the next element size
+	var headerLen uint16 = 4
+	pkglen := binary.BigEndian.Uint16(buf[2:4]) + headerLen
+
+	if pkglen == l {
+		processPPP(link, buf[headerLen:pkglen])
+		return nil
+	}
+
+	if pkglen < l {
+		// recursively process multiple F5 packets in one PPP packet
+		return fromF5(link, buf[pkglen:])
+	}
+
+	// read the tails
+	newBuf := make([]byte, bufferSize)
+	rn, err := link.conn.Read(newBuf)
+	if err != nil {
+		return fmt.Errorf("fatal read http: %s", err)
+	}
+	if debug {
+		log.Printf("Read %d bytes from http:\n%s", rn, hex.Dump(newBuf[:rn]))
+	}
+	return fromF5(link, append(buf[:], newBuf[:rn]...))
+}
+
+func readBuf(buf, sep []byte) []byte {
+	n := bytes.Index(buf, sep)
+	if n == 0 {
+		return buf[len(sep):]
+	}
+	return nil
+}
+
+func toF5andSend(conn *tls.Conn, buf []byte) error {
+	data, err := toF5(buf)
+	if err != nil {
+		return err
+	}
+	if debug {
+		log.Printf("Sending:\n%s", hex.Dump(data))
+	}
+	_, err = conn.Write(data)
+	return err
+}
+
+var (
+	ppp         = []byte{0xff, 0x03}
+	pppLCP      = []byte{0xc0, 0x21}
+	pppIPCP     = []byte{0x80, 0x21}
+	pppIPv6CP   = []byte{0x80, 0x57}
+	ping        = []byte{0x09}
+	pong        = []byte{0x0a}
+	mtuRequest  = []byte{0x00, 0x18}
+	mtuResponse = []byte{0x00, 0x12}
+	mtuHeader   = []byte{0x01, 0x04}
+	accept      = []byte{0x01, 0x01}
+	reject      = []byte{0x04, 0x01}
+	set         = []byte{0x02, 0x01}
+	agree       = []byte{0x02, 0x02}
+	get         = []byte{0x01, 0x02}
+	maybe       = []byte{0x03, 0x01}
+	maybeNot    = []byte{0x01, 0x03}
+	mtuSize     = 2
+	ipv6type    = []byte{0x00, 0x0e}
+	ipv4type    = []byte{0x00, 0x0a}
+	v4          = []byte{0x03, 0x06}
+	v6          = []byte{0x01, 0x0a}
+	ip          = []byte{0x02, 0x06}
+	pfc         = []byte{0x07, 0x02}
+	acfc        = []byte{0x08, 0x02}
+	accm        = []byte{0x02, 0x06, 0x00, 0x00, 0x00, 0x00}
+	magicHeader = []byte{0x05, 0x06}
+	magicSize   = 4
+	mtu         []byte
+	ipv4header  = []byte{0x21}
+	ipv6header  = []byte{0x57}
+)
+
+func processPPP(link *vpnLink, buf []byte) {
+	// process ipv4 traffic
+	if v := readBuf(buf, ipv4header); v != nil {
+		if debug {
+			log.Printf("Read parsed ipv4 %d bytes from http:\n%s", len(v), hex.Dump(v))
+			header, _ := ipv4.ParseHeader(v)
+			log.Printf("ipv4 from http: %s", header)
+		}
+
+		wn, err := link.iface.Write(v)
+		if err != nil {
+			log.Fatalf("Fatal write to tun: %s", err)
+		}
+		if debug {
+			log.Printf("Sent %d bytes to tun", wn)
+		}
+		return
+	}
+
+	// process ipv6 traffic
+	if v := readBuf(buf, ipv6header); v != nil {
+		if debug {
+			log.Printf("Read parsed ipv6 %d bytes from http:\n%s", len(v), hex.Dump(v))
+			header, _ := ipv6.ParseHeader(v)
+			log.Printf("ipv6 from http: %s", header)
+		}
+
+		wn, err := link.iface.Write(v)
+		if err != nil {
+			log.Fatalf("Fatal write to tun: %s", err)
+		}
+		if debug {
+			log.Printf("Sent %d bytes to tun", wn)
+		}
+		return
+	}
+
+	// TODO: support IPv4 only
+	if v := readBuf(buf, pppIPCP); v != nil {
+		if v := readBuf(v, accept); v != nil {
+			if v := readBuf(v, ipv4type); v != nil {
+				if v := readBuf(v, v4); v != nil {
+					log.Printf("Remote IPv4 proposed: %s", net.IP(v))
+
+					doResp := &bytes.Buffer{}
+					doResp.Write(ppp)
+					doResp.Write(pppIPCP)
+					doResp.Write(set)
+					doResp.Write(ipv4type)
+					doResp.Write(v4)
+					doResp.Write(v)
+
+					toF5andSend(link.conn, doResp.Bytes())
+
+					return
+				}
+			}
+		}
+		if v := readBuf(v, agree); v != nil {
+			if v := readBuf(v, ipv4type); v != nil {
+				if v := readBuf(v, v4); v != nil {
+					log.Printf("Local IPv4 agreed: %s", net.IP(v))
+
+					link.nameChan <- link.iface.Name()
+					link.upChan <- true
+
+					return
+				}
+			}
+		}
+		if v := readBuf(v, maybe); v != nil {
+			if v := readBuf(v, ipv4type); v != nil {
+				if v := readBuf(v, v4); v != nil {
+					log.Printf("Local IPv4 accepted: %s", net.IP(v))
+
+					doResp := &bytes.Buffer{}
+					doResp.Write(ppp)
+					doResp.Write(pppIPCP)
+					doResp.Write(get)
+					doResp.Write(ipv4type)
+					doResp.Write(v4)
+					doResp.Write(v)
+
+					toF5andSend(link.conn, doResp.Bytes())
+
+					return
+				}
+			}
+		}
+	}
+
+	// pppIPv6CP
+	if v := readBuf(buf, pppIPv6CP); v != nil {
+		if v := readBuf(v, accept); v != nil {
+			if v := readBuf(v, ipv6type); v != nil {
+				if v := readBuf(v, v6); v != nil {
+					log.Printf("Remote IPv6 proposed: %s", net.IP(append([]byte{0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, v...)))
+
+					doResp := &bytes.Buffer{}
+					doResp.Write(ppp)
+					doResp.Write(pppIPv6CP)
+					doResp.Write(set)
+					doResp.Write(ipv6type)
+					doResp.Write(v6)
+					doResp.Write(v)
+
+					toF5andSend(link.conn, doResp.Bytes())
+
+					return
+				}
+			}
+		}
+		if v := readBuf(v, agree); v != nil {
+			if v := readBuf(v, ipv6type); v != nil {
+				if v := readBuf(v, v6); v != nil {
+					log.Printf("Local IPv6 agreed: %s", net.IP(append([]byte{0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, v...)))
+
+					return
+				}
+			}
+		}
+		if v := readBuf(v, maybe); v != nil {
+			if v := readBuf(v, ipv6type); v != nil {
+				if v := readBuf(v, v6); v != nil {
+					log.Printf("Local IPv6 accepted: %s", net.IP(append([]byte{0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, v...)))
+
+					doResp := &bytes.Buffer{}
+					doResp.Write(ppp)
+					doResp.Write(pppIPv6CP)
+					doResp.Write(get)
+					doResp.Write(ipv6type)
+					doResp.Write(v6)
+					doResp.Write(v)
+
+					toF5andSend(link.conn, doResp.Bytes())
+					return
+				}
+			}
+		}
+	}
+
+	// it is PPP header
+	if v := readBuf(buf, ppp); v != nil {
+		// it is pppLCP
+		if v := readBuf(v, pppLCP); v != nil {
+			if v := readBuf(v, ping); v != nil {
+				log.Printf("ping / pong")
+				// live pings
+				doResp := &bytes.Buffer{}
+				doResp.Write(ppp)
+				doResp.Write(pppLCP)
+				doResp.Write(pong)
+				doResp.Write(v)
+
+				toF5andSend(link.conn, doResp.Bytes())
+				return
+			}
+			// it is pppLCP
+			if v := readBuf(v, accept); v != nil {
+				// required settings
+				if v := readBuf(v, mtuRequest); v != nil {
+					// MTU request
+					if v := readBuf(v, mtuHeader); v != nil {
+						// set MTU
+						t := v[:mtuSize]
+						mtu = append(t[:0:0], t...)
+						log.Printf("MTU: %d", binary.BigEndian.Uint16(mtu))
+						if v := readBuf(v[mtuSize:], accm); v != nil {
+							if v := readBuf(v, magicHeader); v != nil {
+								magic := v[:magicSize]
+								log.Printf("Magic: %x", magic)
+								log.Printf("PFC: %x", v[magicSize:magicSize+len(pfc)])
+								log.Printf("ACFC: %x", v[magicSize+len(pfc):])
+
+								doResp := &bytes.Buffer{}
+								doResp.Write(ppp)
+								doResp.Write(pppLCP)
+								doResp.Write(accept)
+								doResp.Write(ipv6type)
+								doResp.Write(accm)
+								doResp.Write(pfc)
+								doResp.Write(acfc)
+
+								toF5andSend(link.conn, doResp.Bytes())
+
+								doResp = &bytes.Buffer{}
+								doResp.Write(ppp)
+								doResp.Write(pppLCP)
+								doResp.Write(reject)
+								doResp.Write(ipv4type)
+								doResp.Write(magicHeader)
+								doResp.Write(magic)
+
+								toF5andSend(link.conn, doResp.Bytes())
+
+								return
+							} else {
+								log.Fatalf("Wrong magic header")
+							}
+						} else {
+							log.Fatalf("Wrong ACCM")
+						}
+					}
+				}
+			}
+			// do set
+			if v := readBuf(v, set); v != nil {
+				// required settings
+				if v := readBuf(v, ipv6type); v != nil {
+					if v := readBuf(v, accm); v != nil {
+						if v := readBuf(v, pfc); v != nil {
+							if v := readBuf(v, acfc); v != nil {
+								log.Printf("IPV6 accepted")
+								return
+							}
+						}
+					}
+				}
+			}
+			// do get
+			if v := readBuf(v, get); v != nil {
+				if v := readBuf(v, mtuResponse); v != nil {
+					if v := readBuf(v, mtuHeader); v != nil {
+						if v := readBuf(v, mtu); v != nil {
+							if v := readBuf(v, accm); v != nil {
+								if v := readBuf(v, pfc); v != nil {
+									if v := readBuf(v, acfc); v != nil {
+										log.Printf("MTU accepted")
+
+										doResp := &bytes.Buffer{}
+										doResp.Write(ppp)
+										doResp.Write(pppLCP)
+										doResp.Write(agree)
+										doResp.Write(mtuResponse)
+										doResp.Write(mtuHeader)
+										doResp.Write(mtu)
+										doResp.Write(ip)
+										for i := 0; i < 4; i++ {
+											doResp.WriteByte(0)
+										}
+										doResp.Write(pfc)
+										doResp.Write(acfc)
+
+										toF5andSend(link.conn, doResp.Bytes())
+
+										doResp = &bytes.Buffer{}
+										doResp.Write(ppp)
+										doResp.Write(pppIPCP)
+										doResp.Write(accept)
+										doResp.Write(ipv4type)
+										doResp.Write(v4)
+										for i := 0; i < 4; i++ {
+											doResp.WriteByte(0)
+										}
+
+										toF5andSend(link.conn, doResp.Bytes())
+
+										doResp = &bytes.Buffer{}
+										doResp.Write(ppp)
+										doResp.Write(pppIPv6CP)
+										doResp.Write(accept)
+										doResp.Write(ipv6type)
+										doResp.Write(v6)
+										for i := 0; i < 8; i++ {
+											doResp.WriteByte(0)
+										}
+
+										toF5andSend(link.conn, doResp.Bytes())
+										return
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			if v := readBuf(v, maybeNot); v != nil {
+				if v := readBuf(v, mtuRequest); v != nil {
+					if v := readBuf(v, mtuHeader); v != nil {
+						if v := readBuf(v, mtu); v != nil {
+							log.Fatalf("Something is wrong:\n%s", hex.Dump(v))
+						}
+					}
+				}
+			}
+		}
+	}
+
+	log.Printf("Unknown PPP data:\n%s", hex.Dump(buf))
+
+	return
+}
+
+// Encode F5 packet
 // http->tun
-func (l *vpnLink) hdlcHttpToTun(conn *tls.Conn, pppd *os.File) {
-	buf := make([]byte, 1500)
+func (l *vpnLink) httpToTun() {
+	buf := make([]byte, bufferSize)
 	for {
 		select {
 		case <-l.termChan:
 			return
 		default:
-			rn, err := conn.Read(buf)
+			rn, err := l.conn.Read(buf)
 			if err != nil {
 				l.errChan <- fmt.Errorf("fatal read http: %s", err)
 				return
@@ -207,41 +649,121 @@ func (l *vpnLink) hdlcHttpToTun(conn *tls.Conn, pppd *os.File) {
 			if debug {
 				log.Printf("Read %d bytes from http:\n%s", rn, hex.Dump(buf[:rn]))
 			}
-			enc := hdlc.NewEncoder(pppd)
-			// TODO: parse packet header
-			wn, err := enc.WriteFrame(hdlc.Encapsulate(buf[6:rn], true))
+			err = fromF5(l, buf[:rn])
 			if err != nil {
-				l.errChan <- fmt.Errorf("fatal write to pppd: %s", err)
+				l.errChan <- err
 				return
-			}
-			if debug {
-				log.Printf("Sent %d bytes to pppd", wn)
 			}
 		}
 	}
 }
 
-// Decode pppd HDLC format into F5 packet
+func toF5(buf []byte) ([]byte, error) {
+	if len(buf) == 0 {
+		return nil, fmt.Errorf("cannot encapsulate zero packet")
+	}
+
+	if buf[0] == 0x45 {
+		buf = append(ipv4header, buf...)
+	}
+
+	if buf[0] == 0x60 {
+		buf = append(ipv6header, buf...)
+	}
+
+	lenght := len(buf)
+
+	tmp := bytes.NewBuffer([]byte{0xf5, 0x00})
+
+	err := binary.Write(tmp, binary.BigEndian, uint16(lenght))
+	if err != nil {
+		return nil, fmt.Errorf("failed to write F5 header size: %s", err)
+	}
+
+	n, err := tmp.Write(buf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write data to F5 packet: %s", err)
+	}
+	if n != lenght {
+		return nil, fmt.Errorf("written data length mismatch: %d != %d", n, lenght)
+	}
+
+	return tmp.Bytes(), nil
+}
+
+/*
+func toF5(buf []byte) ([]byte, error) {
+	lenght := len(buf)
+	if lenght == 0 {
+		return nil, fmt.Errorf("cannot encapsulate zero slice")
+	}
+
+	tmp := &bytes.Buffer{}
+	tmp.Write([]byte{0xf5, 0x00})
+
+	var hl uint16
+	// add ipv4 header
+	if buf[0] == 0x45 {
+		tmp.Write(ipv4header)
+		hl++
+	}
+	// add ipv6 header
+	if buf[0] == 0x60 {
+		tmp.Write(ipv6header)
+		hl++
+	}
+
+	err := binary.Write(tmp, binary.BigEndian, uint16(lenght)+hl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write F5 header size: %s", err)
+	}
+
+	n, err := tmp.Write(buf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write data to F5 packet: %s", err)
+	}
+	if n != lenght {
+		return nil, fmt.Errorf("written data length mismatch: %d != %d", n, lenght)
+	}
+
+	return tmp.Bytes(), nil
+}
+*/
+
+// Decode into F5 packet
 // tun->http
-func (l *vpnLink) hdlcTunToHttp(conn *tls.Conn, pppd *os.File) {
+func (l *vpnLink) tunToHttp() {
+	done := <-l.upChan
+	if !done {
+		log.Printf("Unexpected link state")
+		return
+	}
+	buf := make([]byte, bufferSize)
 	for {
 		select {
 		case <-l.termChan:
 			return
 		default:
-			dec := hdlc.NewDecoder(pppd)
-			frame, err := dec.ReadFrame()
+			rn, err := l.iface.Read(buf)
 			if err != nil {
-				l.errChan <- fmt.Errorf("fatal read pppd: %s", err)
+				log.Fatalf("Fatal read tun: %s", err)
+			}
+			if debug {
+				log.Printf("Read %d bytes from tun:\n%s", rn, hex.Dump(buf[:rn]))
+				header, _ := ipv4.ParseHeader(buf)
+				log.Printf("ipv4 from tun: %s", header)
+			}
+
+			data, err := toF5(buf[:rn])
+			if err != nil {
+				l.errChan <- err
 				return
 			}
-			rn := len(frame.Payload)
-			// TODO: use proper buffer + binary.BigEndian
-			buf := append([]byte{0xf5, 0x00, 0x00, byte(rn), 0xff, 0x03}, frame.Payload...)
 			if debug {
-				log.Printf("Read %d bytes from pppd:\n%s", rn, hex.Dump(buf))
+				log.Printf("Converted data from pppd:\n%s", hex.Dump(data))
 			}
-			wn, err := conn.Write(buf)
+
+			wn, err := l.conn.Write(data)
 			if err != nil {
 				l.errChan <- fmt.Errorf("fatal write to http: %s", err)
 				return
@@ -279,10 +801,13 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 		return
 	}
 
-	// wait for tun up
-	if !<-l.upChan {
-		l.errChan <- fmt.Errorf("unexpected tun status event")
-		return
+	if config.HDLC {
+		// TODO: understand why it hangs here. Two channel readers?
+		// wait for tun up
+		if !<-l.upChan {
+			l.errChan <- fmt.Errorf("unexpected tun status event")
+			return
+		}
 	}
 
 	// read current resolv.conf
