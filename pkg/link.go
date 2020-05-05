@@ -19,6 +19,7 @@ import (
 	"syscall"
 
 	//goCIDR "github.com/apparentlymart/go-cidr/cidr"
+	"github.com/jackpal/gateway"
 	"github.com/songgao/water"
 	"github.com/vishvananda/netlink"
 	"github.com/zaninime/go-hdlc"
@@ -858,19 +859,16 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 	ipRun("link", "set", "multicast", "off", "dev", l.name)
 	ipRun("addr", "add", clientIP.String(), "peer", serverIP.String(), "dev", l.name)
 	ipRun("link", "set", "dev", l.name, "up")
-	//ipRun("-6", "addr", "flush", "dev", l.name)
-	// for test purposes redirect only to "10.0.0.0/8" CIDR and google IP
-	//ipRun("route", "add", "10.0.0.0/8", "via", clientIP, "proto", "unspec", "metric", "1", "dev", name)
-	//ipRun("route", "add", "8.8.8.8", "via", clientIP, "proto", "unspec", "metric", "1", "dev", name)
-	//  default route TODO: add dynamic ip r
 
-	// USE previous and next subnet https://github.com/apparentlymart/go-cidr
+	gw, err := gateway.DiscoverGateway()
+	if err != nil {
+		l.errChan <- fmt.Errorf("failed to discover the gateway: %s", err)
+	}
 
-	ipRun("route", "add", l.serverIPs[0].String(), "via", "192.168.1.1", "proto", "unspec", "metric", "1", "dev", "wlp2s0")
-	ipRun("route", "add", l.serverIPs[0].String(), "via", "172.17.0.1", "proto", "unspec", "metric", "1", "dev", "eth0")
+	ipRun("route", "add", l.serverIPs[0].String(), "via", gw.String(), "proto", "unspec", "metric", "1")
 
 	for _, cidr := range config.Routes {
-		if cidrContainsIPs(cidr, l.serverIPs) {
+		if false && cidrContainsIPs(cidr, l.serverIPs) {
 			log.Printf("Skipping %s subnet", cidr)
 			//continue
 		}
@@ -893,10 +891,17 @@ func (l *vpnLink) restoreConfig(config *Config) {
 		}
 	}
 
+	gw, err := gateway.DiscoverGateway()
+	if err != nil {
+		l.errChan <- fmt.Errorf("failed to discover the gateway: %s", err)
+	}
+
+	ipRun("route", "del", l.serverIPs[0].String(), "via", gw.String(), "proto", "unspec", "metric", "1")
+
 	if l.ret == nil && l.routesReady && l.link != nil {
 		log.Printf("Removing routes from %s interface", l.name)
 		for _, cidr := range config.Routes {
-			if cidrContainsIPs(cidr, l.serverIPs) {
+			if false && cidrContainsIPs(cidr, l.serverIPs) {
 				log.Printf("Skipping %s subnet", cidr)
 				//continue
 			}

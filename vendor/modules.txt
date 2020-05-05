@@ -1,6 +1,9 @@
 # github.com/creack/pty v1.1.9
 ## explicit
 github.com/creack/pty
+# github.com/jackpal/gateway v1.0.6
+## explicit
+github.com/jackpal/gateway
 # github.com/miekg/dns v1.1.29
 ## explicit
 github.com/miekg/dns
