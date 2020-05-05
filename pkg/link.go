@@ -47,6 +47,12 @@ type vpnLink struct {
 	nameChan    chan string
 	termChan    chan os.Signal
 	serverIPs   []net.IP
+	localIPv4   net.IP
+	serverIPv4  net.IP
+	localIPv6   net.IP
+	serverIPv6  net.IP
+	mtu         []byte
+	mtuInt      uint16
 }
 
 // init a TLS connection
@@ -317,13 +323,9 @@ var (
 	accm        = []byte{0x02, 0x06, 0x00, 0x00, 0x00, 0x00}
 	magicHeader = []byte{0x05, 0x06}
 	magicSize   = 4
-	mtu         []byte
-	mtuInt      uint16
 	ipv4header  = []byte{0x21}
 	ipv6header  = []byte{0x57}
 	protoReject = []byte{0x08}
-	clientIP    net.IP
-	serverIP    net.IP
 )
 
 func processPPP(link *vpnLink, buf []byte) {
@@ -368,8 +370,8 @@ func processPPP(link *vpnLink, buf []byte) {
 		if v := readBuf(v, accept); v != nil {
 			if v := readBuf(v, ipv4type); v != nil {
 				if v := readBuf(v, v4); v != nil {
-					serverIP = net.IP(append(v[:0:0], v...))
-					log.Printf("Remote IPv4 proposed: %s", serverIP)
+					link.serverIPv4 = net.IP(append(v[:0:0], v...))
+					log.Printf("Remote IPv4 proposed: %s", link.serverIPv4)
 
 					doResp := &bytes.Buffer{}
 					doResp.Write(ppp)
@@ -388,8 +390,8 @@ func processPPP(link *vpnLink, buf []byte) {
 		if v := readBuf(v, agree); v != nil {
 			if v := readBuf(v, ipv4type); v != nil {
 				if v := readBuf(v, v4); v != nil {
-					clientIP = net.IP(append(v[:0:0], v...))
-					log.Printf("Local IPv4 agreed: %s", clientIP)
+					link.localIPv4 = net.IP(append(v[:0:0], v...))
+					log.Printf("Local IPv4 agreed: %s", link.localIPv4)
 
 					link.nameChan <- link.iface.Name()
 					link.upChan <- true
@@ -424,7 +426,8 @@ func processPPP(link *vpnLink, buf []byte) {
 		if v := readBuf(v, accept); v != nil {
 			if v := readBuf(v, ipv6type); v != nil {
 				if v := readBuf(v, v6); v != nil {
-					log.Printf("Remote IPv6 proposed: %s", net.IP(append([]byte{0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, v...)))
+					link.serverIPv6 = net.IP(append([]byte{0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, append(v[:0:0], v...)...))
+					log.Printf("Remote IPv6 proposed: %s", link.serverIPv6)
 
 					doResp := &bytes.Buffer{}
 					doResp.Write(ppp)
@@ -443,7 +446,8 @@ func processPPP(link *vpnLink, buf []byte) {
 		if v := readBuf(v, agree); v != nil {
 			if v := readBuf(v, ipv6type); v != nil {
 				if v := readBuf(v, v6); v != nil {
-					log.Printf("Local IPv6 agreed: %s", net.IP(append([]byte{0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, v...)))
+					link.localIPv6 = net.IP(append([]byte{0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, append(v[:0:0], v...)...))
+					log.Printf("Local IPv6 agreed: %s", link.localIPv6)
 
 					return
 				}
@@ -497,9 +501,9 @@ func processPPP(link *vpnLink, buf []byte) {
 					if v := readBuf(v, mtuHeader); v != nil {
 						// set MTU
 						t := v[:mtuSize]
-						mtu = append(t[:0:0], t...)
-						mtuInt = binary.BigEndian.Uint16(mtu)
-						log.Printf("MTU: %d", mtuInt)
+						link.mtu = append(t[:0:0], t...)
+						link.mtuInt = binary.BigEndian.Uint16(link.mtu)
+						log.Printf("MTU: %d", link.mtuInt)
 						if v := readBuf(v[mtuSize:], accm); v != nil {
 							if v := readBuf(v, magicHeader); v != nil {
 								magic := v[:magicSize]
@@ -556,7 +560,7 @@ func processPPP(link *vpnLink, buf []byte) {
 			if v := readBuf(v, get); v != nil {
 				if v := readBuf(v, mtuResponse); v != nil {
 					if v := readBuf(v, mtuHeader); v != nil {
-						if v := readBuf(v, mtu); v != nil {
+						if v := readBuf(v, link.mtu); v != nil {
 							if v := readBuf(v, accm); v != nil {
 								if v := readBuf(v, pfc); v != nil {
 									if v := readBuf(v, acfc); v != nil {
@@ -568,7 +572,7 @@ func processPPP(link *vpnLink, buf []byte) {
 										doResp.Write(agree)
 										doResp.Write(mtuResponse)
 										doResp.Write(mtuHeader)
-										doResp.Write(mtu)
+										doResp.Write(link.mtu)
 										doResp.Write(ip)
 										for i := 0; i < 4; i++ {
 											doResp.WriteByte(0)
@@ -612,7 +616,7 @@ func processPPP(link *vpnLink, buf []byte) {
 			if v := readBuf(v, maybeNot); v != nil {
 				if v := readBuf(v, mtuRequest); v != nil {
 					if v := readBuf(v, mtuHeader); v != nil {
-						if v := readBuf(v, mtu); v != nil {
+						if v := readBuf(v, link.mtu); v != nil {
 							log.Fatalf("Something is wrong:\n%s", hex.Dump(v))
 						}
 					}
@@ -855,10 +859,11 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 		return
 	}
 
-	ipRun("link", "set", "dev", l.name, "mtu", fmt.Sprintf("%d", mtuInt))
+	ipRun("link", "set", "dev", l.name, "mtu", fmt.Sprintf("%d", l.mtuInt))
 	ipRun("link", "set", "arp", "on", "dev", l.name)
 	ipRun("link", "set", "multicast", "off", "dev", l.name)
-	ipRun("addr", "add", clientIP.String(), "peer", serverIP.String(), "dev", l.name)
+	ipRun("addr", "add", l.localIPv4.String(), "peer", l.serverIPv4.String(), "dev", l.name)
+	//ipRun("addr", "add", l.localIPv6.String(), "peer", l.serverIPv6.String(), "dev", l.name)
 	ipRun("link", "set", "dev", l.name, "up")
 
 	gw, err := gateway.DiscoverGateway()
