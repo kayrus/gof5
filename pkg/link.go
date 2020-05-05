@@ -138,6 +138,7 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 		}
 
 		link.iface = iface
+		log.Printf("Created %s interface", iface.Name())
 	}
 
 	return link, nil
