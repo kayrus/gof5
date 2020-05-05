@@ -260,7 +260,7 @@ func (o *Object) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	}
 	*o = Object(s.tmp)
 
-	if v, err := url.QueryUnescape(s.TrafficControl); err == nil {
+	if v, err := url.QueryUnescape(s.TrafficControl); err == nil && v != "" {
 		if err = xml.Unmarshal([]byte(v), &o.TrafficControl); err != nil {
 			return err
 		}
