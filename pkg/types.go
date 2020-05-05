@@ -62,6 +62,8 @@ type Object struct {
 	DNSUseDNSSuffixForRegistration int            `xml:"DNSUseDNSSuffixForRegistration0"`
 	SplitTunneling                 int            `xml:"SplitTunneling0"`
 	DNSSPlit                       string         `xml:"DNS_SPLIT0"`
+	TunnelDTLS                     bool           `xml:"tunnel_dtls,string"`
+	TunnelPortDTLS                 string         `xml:"tunnel_port_dtls,string"`
 	AllowLocalSubnetAccess         bool           `xml:"AllowLocalSubnetAccess0,string"`
 	AllowLocalDNSServersAccess     bool           `xml:"AllowLocalDNSServersAccess0,string"`
 	AllowLocalDHCPAccess           bool           `xml:"AllowLocalDHCPAccess0,string"`
