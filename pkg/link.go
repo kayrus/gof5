@@ -18,6 +18,7 @@ import (
 	"strings"
 	"syscall"
 
+	//goCIDR "github.com/apparentlymart/go-cidr/cidr"
 	"github.com/songgao/water"
 	"github.com/vishvananda/netlink"
 	"github.com/zaninime/go-hdlc"
@@ -135,26 +136,6 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 			log.Fatal(err)
 		}
 
-		name := iface.Name()
-		//name := "tun0"
-
-		// TODO: verify mtu from LCP
-		ipRun("link", "set", "dev", name, "mtu", "1332")
-		ipRun("link", "set", "arp", "on", "dev", name)
-		ipRun("link", "set", "multicast", "off", "dev", name)
-		ipRun("addr", "add", clientIP, "peer", serverIP, "dev", name)
-		ipRun("link", "set", "dev", name, "up")
-		ipRun("-6", "addr", "flush", "dev", name)
-		// for test purposes redirect only to "10.0.0.0/8" CIDR and google IP
-		//ipRun("route", "add", "10.0.0.0/8", "via", clientIP, "proto", "unspec", "metric", "1", "dev", name)
-		//ipRun("route", "add", "8.8.8.8", "via", clientIP, "proto", "unspec", "metric", "1", "dev", name)
-		//  default route TODO: add dynamic ip r
-
-		// USE previous and next subnet https://github.com/apparentlymart/go-cidr
-
-		ipRun("route", "add", serverIPs[0].String(), "via", "192.168.1.1", "proto", "unspec", "metric", "1", "dev", "wlp2s0")
-		ipRun("route", "add", serverIPs[0].String(), "via", "172.17.0.1", "proto", "unspec", "metric", "1", "dev", "eth0")
-
 		link.iface = iface
 	}
 
@@ -164,8 +145,8 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 func ipRun(args ...string) {
 	err := exec.Command("/sbin/ip", args...).Run()
 	if nil != err {
-		log.Printf("Error running /sbin/ip: %s", err)
-		//log.Fatalf("Error running /sbin/ip: %s", err)
+		log.Printf("Error running /sbin/ip %q: %s", args, err)
+		//log.Fatalf("Error running /sbin/ip %q: %s", args, err)
 	}
 }
 
@@ -335,8 +316,12 @@ var (
 	magicHeader = []byte{0x05, 0x06}
 	magicSize   = 4
 	mtu         []byte
+	mtuInt      uint16
 	ipv4header  = []byte{0x21}
 	ipv6header  = []byte{0x57}
+	protoReject = []byte{0x08}
+	clientIP    net.IP
+	serverIP    net.IP
 )
 
 func processPPP(link *vpnLink, buf []byte) {
@@ -381,7 +366,8 @@ func processPPP(link *vpnLink, buf []byte) {
 		if v := readBuf(v, accept); v != nil {
 			if v := readBuf(v, ipv4type); v != nil {
 				if v := readBuf(v, v4); v != nil {
-					log.Printf("Remote IPv4 proposed: %s", net.IP(v))
+					serverIP = net.IP(append(v[:0:0], v...))
+					log.Printf("Remote IPv4 proposed: %s", serverIP)
 
 					doResp := &bytes.Buffer{}
 					doResp.Write(ppp)
@@ -400,7 +386,8 @@ func processPPP(link *vpnLink, buf []byte) {
 		if v := readBuf(v, agree); v != nil {
 			if v := readBuf(v, ipv4type); v != nil {
 				if v := readBuf(v, v4); v != nil {
-					log.Printf("Local IPv4 agreed: %s", net.IP(v))
+					clientIP = net.IP(append(v[:0:0], v...))
+					log.Printf("Local IPv4 agreed: %s", clientIP)
 
 					link.nameChan <- link.iface.Name()
 					link.upChan <- true
@@ -496,6 +483,10 @@ func processPPP(link *vpnLink, buf []byte) {
 				toF5andSend(link.conn, doResp.Bytes())
 				return
 			}
+			if v := readBuf(v, protoReject); v != nil {
+				log.Printf("Protocol reject:\n%s", hex.Dump(v))
+				return
+			}
 			// it is pppLCP
 			if v := readBuf(v, accept); v != nil {
 				// required settings
@@ -505,7 +496,8 @@ func processPPP(link *vpnLink, buf []byte) {
 						// set MTU
 						t := v[:mtuSize]
 						mtu = append(t[:0:0], t...)
-						log.Printf("MTU: %d", binary.BigEndian.Uint16(mtu))
+						mtuInt = binary.BigEndian.Uint16(mtu)
+						log.Printf("MTU: %d", mtuInt)
 						if v := readBuf(v[mtuSize:], accm); v != nil {
 							if v := readBuf(v, magicHeader); v != nil {
 								magic := v[:magicSize]
@@ -791,6 +783,17 @@ func (l *vpnLink) pppdWait(cmd *exec.Cmd) {
 	l.errChan <- err
 }
 
+func cidrContainsIPs(cidr *net.IPNet, ips []net.IP) bool {
+	for _, ip := range ips {
+		if cidr.Contains(ip) {
+			//net, ok := goCIDR.PreviousSubnet(&net.IPNet{IP: ip, Mask: net.CIDRMask(32, 32)}, 17)
+			//log.Printf("Previous: %s %t", net, ok)
+			return true
+		}
+	}
+	return false
+}
+
 // wait for pppd and config DNS and routes
 func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 	var err error
@@ -849,7 +852,28 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 		l.errChan <- fmt.Errorf("failed to detect %s interface: %s", l.name, err)
 		return
 	}
+
+	ipRun("link", "set", "dev", l.name, "mtu", fmt.Sprintf("%d", mtuInt))
+	ipRun("link", "set", "arp", "on", "dev", l.name)
+	ipRun("link", "set", "multicast", "off", "dev", l.name)
+	ipRun("addr", "add", clientIP.String(), "peer", serverIP.String(), "dev", l.name)
+	ipRun("link", "set", "dev", l.name, "up")
+	//ipRun("-6", "addr", "flush", "dev", l.name)
+	// for test purposes redirect only to "10.0.0.0/8" CIDR and google IP
+	//ipRun("route", "add", "10.0.0.0/8", "via", clientIP, "proto", "unspec", "metric", "1", "dev", name)
+	//ipRun("route", "add", "8.8.8.8", "via", clientIP, "proto", "unspec", "metric", "1", "dev", name)
+	//  default route TODO: add dynamic ip r
+
+	// USE previous and next subnet https://github.com/apparentlymart/go-cidr
+
+	ipRun("route", "add", l.serverIPs[0].String(), "via", "192.168.1.1", "proto", "unspec", "metric", "1", "dev", "wlp2s0")
+	ipRun("route", "add", l.serverIPs[0].String(), "via", "172.17.0.1", "proto", "unspec", "metric", "1", "dev", "eth0")
+
 	for _, cidr := range config.Routes {
+		if cidrContainsIPs(cidr, l.serverIPs) {
+			log.Printf("Skipping %s subnet", cidr)
+			//continue
+		}
 		route := netlink.Route{LinkIndex: l.link.Attrs().Index, Dst: cidr}
 		if err = netlink.RouteAdd(&route); err != nil {
 			l.errChan <- fmt.Errorf("failed to set %s route on %s interface: %s", cidr.String(), l.name, err)
@@ -872,6 +896,10 @@ func (l *vpnLink) restoreConfig(config *Config) {
 	if l.ret == nil && l.routesReady && l.link != nil {
 		log.Printf("Removing routes from %s interface", l.name)
 		for _, cidr := range config.Routes {
+			if cidrContainsIPs(cidr, l.serverIPs) {
+				log.Printf("Skipping %s subnet", cidr)
+				//continue
+			}
 			route := netlink.Route{LinkIndex: l.link.Attrs().Index, Dst: cidr}
 			if err := netlink.RouteDel(&route); err != nil {
 				log.Printf("Failed to delete %s route from %s interface: %s", cidr.String(), l.name, err)
