@@ -17,6 +17,7 @@ import (
 	"syscall"
 
 	"github.com/creack/pty"
+	"github.com/howeyc/gopass"
 )
 
 const (
@@ -39,7 +40,20 @@ func checkRedirect(c *http.Client) func(*http.Request, []*http.Request) error {
 	}
 }
 
-func login(c *http.Client, server, username, password string) error {
+func login(c *http.Client, server string, username, password *string) error {
+	if *username == "" {
+		fmt.Print("Username: ")
+		fmt.Scanln(username)
+	}
+	if *password == "" {
+		fmt.Print("Password: ")
+		v, err := gopass.GetPasswd()
+		if err != nil {
+			return fmt.Errorf("failed to read password: %s", err)
+		}
+		*password = string(v)
+	}
+
 	log.Printf("Logging in...")
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s", server), nil)
 	req.Proto = "HTTP/1.0"
@@ -55,8 +69,8 @@ func login(c *http.Client, server, username, password string) error {
 	resp.Body.Close()
 
 	data := url.Values{}
-	data.Set("username", username)
-	data.Add("password", password)
+	data.Set("username", *username)
+	data.Add("password", *password)
 	data.Add("vhost", "standard")
 	req, err = http.NewRequest("POST", fmt.Sprintf("https://%s/my.policy?outform=xml", server), strings.NewReader(data.Encode()))
 	req.Header.Set("Referer", fmt.Sprintf("https://%s/my.policy", server))
@@ -145,10 +159,20 @@ func closeVPNSession(c *http.Client, server string) {
 }
 
 func Connect(server, username, password string, closeSession bool) error {
-	u, err := url.Parse(fmt.Sprintf("https://%s", server))
+	u, err := url.Parse(fmt.Sprintf("%s", server))
 	if err != nil {
 		return fmt.Errorf("failed to parse server hostname: %s", err)
 	}
+	if u.Scheme != "https" {
+		u, err = url.Parse(fmt.Sprintf("https://%s", u.Host))
+		if err != nil {
+			return fmt.Errorf("failed to parse server hostname: %s", err)
+		}
+	}
+	if u.Host == "" {
+		return fmt.Errorf("failed to parse %q server hostname", server)
+	}
+	server = u.Host
 
 	// read config
 	config, err := readConfig()
@@ -182,7 +206,7 @@ func Connect(server, username, password string, closeSession bool) error {
 
 	if len(client.Jar.Cookies(u)) == 0 {
 		// need to login
-		if err := login(client, server, username, password); err != nil {
+		if err := login(client, server, &username, &password); err != nil {
 			return fmt.Errorf("failed to login: %s", err)
 		}
 	} else {
@@ -202,7 +226,7 @@ func Connect(server, username, password string, closeSession bool) error {
 		}
 		resp.Body.Close()
 
-		if err := login(client, server, username, password); err != nil {
+		if err := login(client, server, &username, &password); err != nil {
 			return fmt.Errorf("failed to login: %s", err)
 		}
 
@@ -244,7 +268,7 @@ func Connect(server, username, password string, closeSession bool) error {
 	defer link.conn.Close()
 
 	var cmd *exec.Cmd
-	if config.HDLC {
+	if config.PPPD {
 		// VPN
 		if favorite.Object.IPv6 {
 			config.PPPdArgs = append(config.PPPdArgs,
@@ -272,14 +296,10 @@ func Connect(server, username, password string, closeSession bool) error {
 	// error handler
 	go link.errorHandler()
 
-	// TODO: was here, check
-	//		// pppd log parser
-	//		go link.pppdLogParser(stderr)
-
 	// set routes and DNS
 	go link.waitAndConfig(config, favorite)
 
-	if config.HDLC {
+	if config.PPPD {
 		stderr, err := cmd.StderrPipe()
 		if err != nil {
 			return fmt.Errorf("cannot allocate stderr pipe: %s", err)
@@ -296,11 +316,11 @@ func Connect(server, username, password string, closeSession bool) error {
 		// terminate on pppd termination
 		go link.pppdWait(cmd)
 
-		// http->tun go routine
-		go link.hdlcHttpToTun(pppd)
+		// pppd http->tun go routine
+		go link.pppdHttpToTun(pppd)
 
-		// tun->http go routine
-		go link.hdlcTunToHttp(pppd)
+		// pppd tun->http go routine
+		go link.pppdTunToHttp(pppd)
 	} else {
 		// http->tun go routine
 		go link.httpToTun()
@@ -314,7 +334,7 @@ func Connect(server, username, password string, closeSession bool) error {
 
 	link.restoreConfig(config)
 
-	if config.HDLC {
+	if config.PPPD {
 		// TODO: properly wait for pppd process on ctrl+c
 		cmd.Wait()
 	}

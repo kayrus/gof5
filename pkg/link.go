@@ -61,7 +61,7 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 	//purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&Z=%s&hdlc_framing=%s", server, favorite.Object.SessionID, favorite.Object.UrZ, hdlcFraming))
 	// favorite.Object.IPv6 = false
 	hostname := base64.StdEncoding.EncodeToString([]byte("my-hostname"))
-	purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s", server, favorite.Object.SessionID, hostname, config.HDLC, favorite.Object.IPv4, favorite.Object.IPv6, favorite.Object.UrZ))
+	purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s", server, favorite.Object.SessionID, hostname, config.PPPD, favorite.Object.IPv4, favorite.Object.IPv6, favorite.Object.UrZ))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse connection VPN: %s", err)
 	}
@@ -135,7 +135,7 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 		termChan:  make(chan os.Signal, 1),
 	}
 
-	if !config.HDLC {
+	if !config.PPPD {
 		iface, err := water.New(water.Config{
 			DeviceType: water.TUN,
 		})
@@ -183,7 +183,7 @@ func (l *vpnLink) decodeHDLC(buf []byte, src string) {
 }
 
 // http->tun
-func (l *vpnLink) hdlcHttpToTun(pppd *os.File) {
+func (l *vpnLink) pppdHttpToTun(pppd *os.File) {
 	buf := make([]byte, bufferSize)
 	for {
 		select {
@@ -212,7 +212,7 @@ func (l *vpnLink) hdlcHttpToTun(pppd *os.File) {
 }
 
 // tun->http
-func (l *vpnLink) hdlcTunToHttp(pppd *os.File) {
+func (l *vpnLink) pppdTunToHttp(pppd *os.File) {
 	buf := make([]byte, bufferSize)
 	for {
 		select {
@@ -810,7 +810,7 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 		return
 	}
 
-	if config.HDLC {
+	if config.PPPD {
 		// TODO: understand why it hangs here. Two channel readers?
 		// wait for tun up
 		if !<-l.upChan {
@@ -859,19 +859,21 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 		return
 	}
 
-	ipRun("link", "set", "dev", l.name, "mtu", fmt.Sprintf("%d", l.mtuInt))
-	ipRun("link", "set", "arp", "on", "dev", l.name)
-	ipRun("link", "set", "multicast", "off", "dev", l.name)
-	ipRun("addr", "add", l.localIPv4.String(), "peer", l.serverIPv4.String(), "dev", l.name)
-	//ipRun("addr", "add", l.localIPv6.String(), "peer", l.serverIPv6.String(), "dev", l.name)
-	ipRun("link", "set", "dev", l.name, "up")
+	if !config.PPPD {
+		ipRun("link", "set", "dev", l.name, "mtu", fmt.Sprintf("%d", l.mtuInt))
+		ipRun("link", "set", "arp", "on", "dev", l.name)
+		ipRun("link", "set", "multicast", "off", "dev", l.name)
+		ipRun("addr", "add", l.localIPv4.String(), "peer", l.serverIPv4.String(), "dev", l.name)
+		//ipRun("addr", "add", l.localIPv6.String(), "peer", l.serverIPv6.String(), "dev", l.name)
+		ipRun("link", "set", "dev", l.name, "up")
 
-	gw, err := gateway.DiscoverGateway()
-	if err != nil {
-		l.errChan <- fmt.Errorf("failed to discover the gateway: %s", err)
+		gw, err := gateway.DiscoverGateway()
+		if err != nil {
+			l.errChan <- fmt.Errorf("failed to discover the gateway: %s", err)
+		}
+
+		ipRun("route", "add", l.serverIPs[0].String(), "via", gw.String(), "proto", "unspec", "metric", "1")
 	}
-
-	ipRun("route", "add", l.serverIPs[0].String(), "via", gw.String(), "proto", "unspec", "metric", "1")
 
 	for _, cidr := range config.Routes {
 		if false && cidrContainsIPs(cidr, l.serverIPs) {
@@ -897,12 +899,14 @@ func (l *vpnLink) restoreConfig(config *Config) {
 		}
 	}
 
-	gw, err := gateway.DiscoverGateway()
-	if err != nil {
-		l.errChan <- fmt.Errorf("failed to discover the gateway: %s", err)
-	}
+	if !config.PPPD {
+		gw, err := gateway.DiscoverGateway()
+		if err != nil {
+			l.errChan <- fmt.Errorf("failed to discover the gateway: %s", err)
+		}
 
-	ipRun("route", "del", l.serverIPs[0].String(), "via", gw.String(), "proto", "unspec", "metric", "1")
+		ipRun("route", "del", l.serverIPs[0].String(), "via", gw.String(), "proto", "unspec", "metric", "1")
+	}
 
 	if l.ret == nil && l.routesReady && l.link != nil {
 		log.Printf("Removing routes from %s interface", l.name)

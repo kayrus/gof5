@@ -28,11 +28,11 @@ func parseResolvConf(config *Config, resolvConf []byte) {
 		}
 		switch f[0] {
 		case "nameserver":
-			if len(f) > 1 && len(config.origServers) < 3 {
+			if len(f) > 1 && len(config.DNSServers) < 3 {
 				if v := net.ParseIP(f[1]); v.To4() != nil {
-					config.origServers = append(config.origServers, v)
+					config.DNSServers = append(config.DNSServers, v)
 				} else if v.To16() != nil {
-					config.origServers = append(config.origServers, v)
+					config.DNSServers = append(config.DNSServers, v)
 				}
 			}
 		}
@@ -40,10 +40,12 @@ func parseResolvConf(config *Config, resolvConf []byte) {
 }
 
 func startDns(config *Config, resolvConf []byte) {
-	parseResolvConf(config, resolvConf)
+	if len(config.DNSServers) == 0 {
+		parseResolvConf(config, resolvConf)
+	}
 	log.Printf("Serving DNS proxy on %s:53", listenAddr)
 	log.Printf("Forwarding %q DNS requests to %q", config.DNS, config.vpnServers)
-	log.Printf("Default DNS servers: %q", config.origServers)
+	log.Printf("Default DNS servers: %q", config.DNSServers)
 
 	dnsUdpHandler := func(w dns.ResponseWriter, m *dns.Msg) {
 		dnsHandler(w, m, config, "udp")
@@ -82,7 +84,7 @@ func dnsHandler(w dns.ResponseWriter, m *dns.Msg, config *Config, proto string) 
 			}
 		}
 	}
-	for _, s := range config.origServers {
+	for _, s := range config.DNSServers {
 		if err := handleCustom(w, m, c, s); err == nil {
 			return
 		}

@@ -101,10 +101,13 @@ type Filter struct {
 
 type Config struct {
 	// defaults to true
-	HDLC     Bool         `yaml:"hdlc"`
+	PPPD     Bool         `yaml:"pppd"`
 	DNS      []string     `yaml:"dns"`
 	Routes   []*net.IPNet `yaml:"-"`
 	PPPdArgs []string     `yaml:"pppdArgs"`
+	// list of DNS local servers
+	// when list is empty, parsed from /etc/resolv.conf
+	DNSServers []net.IP `yaml:"-"`
 	// internal parameters
 	// current user or sudo user
 	user *user.User
@@ -116,8 +119,6 @@ type Config struct {
 	gid int
 	// list of DNS servers, returned by F5
 	vpnServers []net.IP
-	// list of DNS servers, parsed from /etc/resolv.conf
-	origServers []net.IP
 }
 
 type Cookies map[string][]string
@@ -133,10 +134,11 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type tmp Config
 	var s struct {
 		tmp
-		HDLC     *bool    `yaml:"hdlc"`
-		DNS      []string `yaml:"dns"`
-		Routes   []string `yaml:"routes"`
-		PPPdArgs []string `yaml:"pppdArgs"`
+		PPPD       bool     `yaml:"pppd"`
+		DNS        []string `yaml:"dns"`
+		Routes     []string `yaml:"routes"`
+		PPPdArgs   []string `yaml:"pppdArgs"`
+		DNSServers []string `yaml:"dnsServers"`
 	}
 
 	if err := unmarshal(&s); err != nil {
@@ -145,12 +147,7 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	*r = Config(s.tmp)
 
-	if s.HDLC == nil {
-		// defaults to true
-		r.HDLC = true
-	} else {
-		r.HDLC = Bool(*s.HDLC)
-	}
+	r.PPPD = Bool(s.PPPD)
 
 	// TODO: check DNS trailing dots
 	r.DNS = s.DNS
@@ -194,6 +191,11 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if len(s.PPPdArgs) > 0 {
 		// extra pppd args
 		r.PPPdArgs = append(r.PPPdArgs, s.PPPdArgs...)
+	}
+
+	r.DNSServers = make([]net.IP, len(s.DNSServers))
+	for i, v := range s.DNSServers {
+		r.DNSServers[i] = net.ParseIP(v)
 	}
 
 	return nil

@@ -2,7 +2,6 @@
 
 ## Requirements
 
-* pppd binary must be installed
 * application must be executed as privileged root user
 * Linux only, pull requests to support MacOS are welcome
 
@@ -10,22 +9,29 @@
 
 ```sh
 $ make
-$ sudo ./bin/gof5 --server server --username username --password token --debug
+$ sudo ./bin/gof5 --server server --username username --password token
 ```
 
-Username and password will be used only, when `~/.gof5/cookies.yaml` file doesn't contain previously saved HTTPS session cookies or when the saved session is expired or explicitly terminated (`--close-session`).
+When username and password are not provided, they will be asked if `~/.gof5/cookies.yaml` file doesn't contain previously saved HTTPS session cookies or when the saved session is expired or explicitly terminated (`--close-session`).
 
 Use `--close-session` flag to terminate an HTTPS VPN session on exit. Next startup will require a valid username/password.
 
 A `~/.gof5/config.yaml` file must exist with contents like:
 
 ```yaml
-# experimental
-# dns enables internal dns proxy, which is not stable enough
-# omit "dns" to disable DNS proxy
-#dns:
-#- corp.int.
-#- corp.
+# when true, a pppd client will be used
+pppd: false
+# a list of DNS zones to be resolved by VPN DNS servers
+# when empty, every DNS query will be resolved by VPN DNS servers
+dns:
+- corp.int.
+- corp.
+# a list of primary DNS servers
+# when empty, will be parsed from /etc/resolv.conf
+dnsServers:
+- 8.8.8.8
+- 8.8.4.4
+# a list of subnets to be routed via VPN
 routes:
 - 1.2.3.4
 - 1.2.3.5/32

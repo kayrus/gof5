@@ -25,14 +25,6 @@ func main() {
 		log.Fatal("Please define --server parameter")
 	}
 
-	if username == "" {
-		log.Fatal("Please define --username parameter")
-	}
-
-	if password == "" {
-		log.Fatal("Please define --password parameter")
-	}
-
 	if u, err := user.Current(); err != nil {
 		log.Fatalf("Failed to detect current user ID: %s", err)
 	} else if u.Uid != "0" {

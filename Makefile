@@ -20,3 +20,6 @@ fmt:
 
 vet:
 	go vet -mod=vendor ./cmd ./pkg
+
+mod:
+	go mod vendor
