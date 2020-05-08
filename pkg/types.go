@@ -166,7 +166,7 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		"noauth",
 		"nodetach",
 		//"crtscts",
-		//"passive",
+		"passive",
 		//"local",
 		"ipcp-accept-local",
 		"ipcp-accept-remote",
@@ -176,15 +176,13 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		//"lcp-echo-adaptive",
 		//"lcp-echo-interval", "0",
 		//"defaultroute",
-		/*
-			// nocompression
-			"novj",
-			"novjccomp",
-			"noaccomp",
-			"noccp",
-			"nopcomp",
-			"nopredictor1",
-		*/
+		// nocompression
+		"novj",
+		"novjccomp",
+		"noaccomp",
+		"noccp",
+		"nopcomp",
+		"nopredictor1",
 		"nodeflate", // Protocol-Reject for 'Compression Control Protocol' (0x80fd) received
 		"nobsdcomp", // Protocol-Reject for 'Compression Control Protocol' (0x80fd) received
 	}

@@ -303,15 +303,10 @@ var (
 	ping        = []byte{0x09}
 	pong        = []byte{0x0a}
 	mtuRequest  = []byte{0x00, 0x18}
+	terminate   = []byte{0x00, 0x17}
 	mtuResponse = []byte{0x00, 0x12}
+	protoRej    = []byte{0x00, 0x2c}
 	mtuHeader   = []byte{0x01, 0x04}
-	accept      = []byte{0x01, 0x01}
-	reject      = []byte{0x04, 0x01}
-	set         = []byte{0x02, 0x01}
-	agree       = []byte{0x02, 0x02}
-	get         = []byte{0x01, 0x02}
-	maybe       = []byte{0x03, 0x01}
-	maybeNot    = []byte{0x01, 0x03}
 	mtuSize     = 2
 	ipv6type    = []byte{0x00, 0x0e}
 	ipv4type    = []byte{0x00, 0x0a}
@@ -325,8 +320,22 @@ var (
 	magicSize   = 4
 	ipv4header  = []byte{0x21}
 	ipv6header  = []byte{0x57}
+	//
+	confRequest = []byte{0x01}
+	confAck     = []byte{0x02}
+	confNack    = []byte{0x03}
+	confRej     = []byte{0x04}
+	confTermReq = []byte{0x05}
 	protoReject = []byte{0x08}
 )
+
+func bytesToIPv4(bytes []byte) net.IP {
+	return net.IP(append(bytes[:0:0], bytes...))
+}
+
+func bytesToIPv6(bytes []byte) net.IP {
+	return net.IP(append([]byte{0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, append(bytes[:0:0], bytes...)...))
+}
 
 func processPPP(link *vpnLink, buf []byte) {
 	// process ipv4 traffic
@@ -367,16 +376,19 @@ func processPPP(link *vpnLink, buf []byte) {
 
 	// TODO: support IPv4 only
 	if v := readBuf(buf, pppIPCP); v != nil {
-		if v := readBuf(v, accept); v != nil {
-			if v := readBuf(v, ipv4type); v != nil {
+		if v := readBuf(v, confRequest); v != nil {
+			id := v[0]
+			if v := readBuf(v[1:], ipv4type); v != nil {
 				if v := readBuf(v, v4); v != nil {
-					link.serverIPv4 = net.IP(append(v[:0:0], v...))
-					log.Printf("Remote IPv4 proposed: %s", link.serverIPv4)
+					link.serverIPv4 = bytesToIPv4(v)
+					log.Printf("id: %d, Remote IPv4 requested: %s", id, link.serverIPv4)
 
 					doResp := &bytes.Buffer{}
 					doResp.Write(ppp)
 					doResp.Write(pppIPCP)
-					doResp.Write(set)
+					//
+					doResp.Write(confAck)
+					doResp.WriteByte(id)
 					doResp.Write(ipv4type)
 					doResp.Write(v4)
 					doResp.Write(v)
@@ -387,11 +399,12 @@ func processPPP(link *vpnLink, buf []byte) {
 				}
 			}
 		}
-		if v := readBuf(v, agree); v != nil {
-			if v := readBuf(v, ipv4type); v != nil {
+		if v := readBuf(v, confAck); v != nil {
+			id := v[0]
+			if v := readBuf(v[1:], ipv4type); v != nil {
 				if v := readBuf(v, v4); v != nil {
-					link.localIPv4 = net.IP(append(v[:0:0], v...))
-					log.Printf("Local IPv4 agreed: %s", link.localIPv4)
+					link.localIPv4 = bytesToIPv4(v)
+					log.Printf("id: %d, Local IPv4 acknowledged: %s", id, link.localIPv4)
 
 					link.nameChan <- link.iface.Name()
 					link.upChan <- true
@@ -400,15 +413,18 @@ func processPPP(link *vpnLink, buf []byte) {
 				}
 			}
 		}
-		if v := readBuf(v, maybe); v != nil {
-			if v := readBuf(v, ipv4type); v != nil {
+		if v := readBuf(v, confNack); v != nil {
+			id := v[0]
+			if v := readBuf(v[1:], ipv4type); v != nil {
 				if v := readBuf(v, v4); v != nil {
-					log.Printf("Local IPv4 accepted: %s", net.IP(v))
+					log.Printf("id: %d, Local IPv4 not acknowledged: %s", id, bytesToIPv4(v))
 
 					doResp := &bytes.Buffer{}
 					doResp.Write(ppp)
 					doResp.Write(pppIPCP)
-					doResp.Write(get)
+					//
+					doResp.Write(confRequest)
+					doResp.WriteByte(id)
 					doResp.Write(ipv4type)
 					doResp.Write(v4)
 					doResp.Write(v)
@@ -423,16 +439,19 @@ func processPPP(link *vpnLink, buf []byte) {
 
 	// pppIPv6CP
 	if v := readBuf(buf, pppIPv6CP); v != nil {
-		if v := readBuf(v, accept); v != nil {
-			if v := readBuf(v, ipv6type); v != nil {
+		if v := readBuf(v, confRequest); v != nil {
+			id := v[0]
+			if v := readBuf(v[1:], ipv6type); v != nil {
 				if v := readBuf(v, v6); v != nil {
-					link.serverIPv6 = net.IP(append([]byte{0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, append(v[:0:0], v...)...))
-					log.Printf("Remote IPv6 proposed: %s", link.serverIPv6)
+					link.serverIPv6 = bytesToIPv6(v)
+					log.Printf("id: %d, Remote IPv6 requested: %s", id, link.serverIPv6)
 
 					doResp := &bytes.Buffer{}
 					doResp.Write(ppp)
 					doResp.Write(pppIPv6CP)
-					doResp.Write(set)
+					//
+					doResp.Write(confAck)
+					doResp.WriteByte(id)
 					doResp.Write(ipv6type)
 					doResp.Write(v6)
 					doResp.Write(v)
@@ -443,25 +462,29 @@ func processPPP(link *vpnLink, buf []byte) {
 				}
 			}
 		}
-		if v := readBuf(v, agree); v != nil {
-			if v := readBuf(v, ipv6type); v != nil {
+		if v := readBuf(v, confAck); v != nil {
+			id := v[0]
+			if v := readBuf(v[1:], ipv6type); v != nil {
 				if v := readBuf(v, v6); v != nil {
-					link.localIPv6 = net.IP(append([]byte{0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, append(v[:0:0], v...)...))
-					log.Printf("Local IPv6 agreed: %s", link.localIPv6)
+					link.localIPv6 = bytesToIPv6(v)
+					log.Printf("id: %d, Local IPv6 acknowledged: %s", id, link.localIPv6)
 
 					return
 				}
 			}
 		}
-		if v := readBuf(v, maybe); v != nil {
-			if v := readBuf(v, ipv6type); v != nil {
+		if v := readBuf(v, confNack); v != nil {
+			id := v[0]
+			if v := readBuf(v[1:], ipv6type); v != nil {
 				if v := readBuf(v, v6); v != nil {
-					log.Printf("Local IPv6 accepted: %s", net.IP(append([]byte{0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, v...)))
+					log.Printf("id: %d, Local IPv6 not acknowledged: %s", id, bytesToIPv6(v))
 
 					doResp := &bytes.Buffer{}
 					doResp.Write(ppp)
 					doResp.Write(pppIPv6CP)
-					doResp.Write(get)
+					//
+					doResp.Write(confRequest)
+					doResp.WriteByte(id)
 					doResp.Write(ipv6type)
 					doResp.Write(v6)
 					doResp.Write(v)
@@ -477,26 +500,40 @@ func processPPP(link *vpnLink, buf []byte) {
 	if v := readBuf(buf, ppp); v != nil {
 		// it is pppLCP
 		if v := readBuf(v, pppLCP); v != nil {
+			if v := readBuf(v, confTermReq); v != nil {
+				id := v[0]
+				if v := readBuf(v[1:], terminate); v != nil {
+					link.errChan <- fmt.Errorf("id: %d, Link terminated with: %s", id, v)
+					return
+				}
+			}
 			if v := readBuf(v, ping); v != nil {
-				log.Printf("ping / pong")
+				id := v[0]
+				log.Printf("id: %d, ping / pong", id)
 				// live pings
 				doResp := &bytes.Buffer{}
 				doResp.Write(ppp)
 				doResp.Write(pppLCP)
+				//
 				doResp.Write(pong)
-				doResp.Write(v)
+				doResp.WriteByte(id)
+				doResp.Write(v[1:])
 
 				toF5andSend(link.conn, doResp.Bytes())
 				return
 			}
 			if v := readBuf(v, protoReject); v != nil {
-				log.Printf("Protocol reject:\n%s", hex.Dump(v))
-				return
+				id := v[0]
+				if v := readBuf(v[1:], protoRej); v != nil {
+					log.Printf("id: %d, Protocol reject:\n%s", id, hex.Dump(v))
+					return
+				}
 			}
 			// it is pppLCP
-			if v := readBuf(v, accept); v != nil {
-				// required settings
-				if v := readBuf(v, mtuRequest); v != nil {
+			if v := readBuf(v, confRequest); v != nil {
+				id := v[0]
+				// configuration requested
+				if v := readBuf(v[1:], mtuRequest); v != nil {
 					// MTU request
 					if v := readBuf(v, mtuHeader); v != nil {
 						// set MTU
@@ -514,7 +551,9 @@ func processPPP(link *vpnLink, buf []byte) {
 								doResp := &bytes.Buffer{}
 								doResp.Write(ppp)
 								doResp.Write(pppLCP)
-								doResp.Write(accept)
+								//
+								doResp.Write(confRequest)
+								doResp.WriteByte(id)
 								doResp.Write(ipv6type)
 								doResp.Write(accm)
 								doResp.Write(pfc)
@@ -525,7 +564,10 @@ func processPPP(link *vpnLink, buf []byte) {
 								doResp = &bytes.Buffer{}
 								doResp.Write(ppp)
 								doResp.Write(pppLCP)
-								doResp.Write(reject)
+								//
+								doResp.Write(confRej)
+								//doResp.Write(confRequest)
+								doResp.WriteByte(id)
 								doResp.Write(ipv4type)
 								doResp.Write(magicHeader)
 								doResp.Write(magic)
@@ -541,35 +583,20 @@ func processPPP(link *vpnLink, buf []byte) {
 						}
 					}
 				}
-			}
-			// do set
-			if v := readBuf(v, set); v != nil {
-				// required settings
-				if v := readBuf(v, ipv6type); v != nil {
-					if v := readBuf(v, accm); v != nil {
-						if v := readBuf(v, pfc); v != nil {
-							if v := readBuf(v, acfc); v != nil {
-								log.Printf("IPV6 accepted")
-								return
-							}
-						}
-					}
-				}
-			}
-			// do get
-			if v := readBuf(v, get); v != nil {
-				if v := readBuf(v, mtuResponse); v != nil {
+				if v := readBuf(v[1:], mtuResponse); v != nil {
 					if v := readBuf(v, mtuHeader); v != nil {
 						if v := readBuf(v, link.mtu); v != nil {
 							if v := readBuf(v, accm); v != nil {
 								if v := readBuf(v, pfc); v != nil {
 									if v := readBuf(v, acfc); v != nil {
-										log.Printf("MTU accepted")
+										log.Printf("id: %d, MTU accepted", id)
 
 										doResp := &bytes.Buffer{}
 										doResp.Write(ppp)
 										doResp.Write(pppLCP)
-										doResp.Write(agree)
+										//
+										doResp.Write(confAck)
+										doResp.WriteByte(id)
 										doResp.Write(mtuResponse)
 										doResp.Write(mtuHeader)
 										doResp.Write(link.mtu)
@@ -585,7 +612,9 @@ func processPPP(link *vpnLink, buf []byte) {
 										doResp = &bytes.Buffer{}
 										doResp.Write(ppp)
 										doResp.Write(pppIPCP)
-										doResp.Write(accept)
+										//
+										doResp.Write(confRequest)
+										doResp.WriteByte(id)
 										doResp.Write(ipv4type)
 										doResp.Write(v4)
 										for i := 0; i < 4; i++ {
@@ -597,7 +626,9 @@ func processPPP(link *vpnLink, buf []byte) {
 										doResp = &bytes.Buffer{}
 										doResp.Write(ppp)
 										doResp.Write(pppIPv6CP)
-										doResp.Write(accept)
+										//
+										doResp.Write(confRequest)
+										doResp.WriteByte(id)
 										doResp.Write(ipv6type)
 										doResp.Write(v6)
 										for i := 0; i < 8; i++ {
@@ -613,12 +644,33 @@ func processPPP(link *vpnLink, buf []byte) {
 					}
 				}
 			}
-			if v := readBuf(v, maybeNot); v != nil {
-				if v := readBuf(v, mtuRequest); v != nil {
+			// do set
+			if v := readBuf(v, confAck); v != nil {
+				// required settings
+				id := v[0]
+				if v := readBuf(v[1:], ipv6type); v != nil {
+					if v := readBuf(v, accm); v != nil {
+						if v := readBuf(v, pfc); v != nil {
+							if v := readBuf(v, acfc); v != nil {
+								log.Printf("id: %d, IPV6 accepted", id)
+								return
+							}
+						}
+					}
+				}
+			}
+			if v := readBuf(v, confNack); v != nil {
+				id := v[0]
+				if v := readBuf(v[1:], mtuRequest); v != nil {
 					if v := readBuf(v, mtuHeader); v != nil {
 						if v := readBuf(v, link.mtu); v != nil {
-							log.Fatalf("Something is wrong:\n%s", hex.Dump(v))
+							log.Fatalf("id: %d, MTU not acknowledged:\n%s", id, hex.Dump(v))
 						}
+					}
+				}
+				if v := readBuf(v[1:], ipv4type); v != nil {
+					if v := readBuf(v, magicHeader); v != nil {
+						log.Fatalf("id: %d, IPv4 not acknowledged:\n%s", id, hex.Dump(v))
 					}
 				}
 			}
