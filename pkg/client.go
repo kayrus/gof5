@@ -170,7 +170,13 @@ func Connect(server, username, password string, closeSession bool) error {
 		}
 	}
 	if u.Host == "" {
-		return fmt.Errorf("failed to parse %q server hostname", server)
+		u, err = url.Parse(fmt.Sprintf("https://%s", server))
+		if err != nil {
+			return fmt.Errorf("failed to parse server hostname: %s", err)
+		}
+		if u.Host == "" {
+			return fmt.Errorf("failed to parse server hostname: %s", err)
+		}
 	}
 	server = u.Host
 
