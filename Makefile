@@ -5,7 +5,8 @@ UID:=$(shell id -u)
 VERSION:=$(shell git describe --tags --always --dirty="-dev")
 LDFLAGS:=-X $(PKG)/pkg.Version=$(VERSION)
 
-export CGO_ENABLED:=0
+# CGO is incompatible with AD/LDAP
+#export CGO_ENABLED:=0
 
 build: fmt vet
 	GOOS=linux go build -mod=vendor -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME) ./cmd

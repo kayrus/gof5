@@ -296,15 +296,15 @@ func toF5andSend(conn *tls.Conn, buf []byte) error {
 }
 
 var (
-	ppp         = []byte{0xff, 0x03}
-	pppLCP      = []byte{0xc0, 0x21}
-	pppIPCP     = []byte{0x80, 0x21}
-	pppIPv6CP   = []byte{0x80, 0x57}
+	ppp       = []byte{0xff, 0x03}
+	pppLCP    = []byte{0xc0, 0x21}
+	pppIPCP   = []byte{0x80, 0x21}
+	pppIPv6CP = []byte{0x80, 0x57}
 	// LCP auth
-	mtuRequest  = []byte{0x00, 0x18}
+	mtuRequest = []byte{0x00, 0x18}
 	// Link-Discriminator
-	terminate   = []byte{0x00, 0x17}
-	// 
+	terminate = []byte{0x00, 0x17}
+	//
 	mtuResponse = []byte{0x00, 0x12}
 	protoRej    = []byte{0x00, 0x2c}
 	mtuHeader   = []byte{0x01, 0x04}
