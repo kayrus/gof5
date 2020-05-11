@@ -730,6 +730,11 @@ func toF5(buf []byte) ([]byte, error) {
 		buf = append(ipv4header, buf...)
 	}
 
+	// deal with the "Protocol reject: 46 c0"
+	if buf[0] == 0x46 {
+		buf = append(ipv4header, buf...)
+	}
+
 	if buf[0] == 0x60 {
 		buf = append(ipv6header, buf...)
 	}
