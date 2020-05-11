@@ -310,9 +310,8 @@ var (
 	mtuSize     = 2
 	ipv6type    = []byte{0x00, 0x0e}
 	ipv4type    = []byte{0x00, 0x0a}
-	v4          = []byte{0x03, 0x06}
-	v6          = []byte{0x01, 0x0a}
-	ip          = []byte{0x02, 0x06}
+	v4          = []byte{0x06}
+	v6          = []byte{0x0a}
 	pfc         = []byte{0x07, 0x02}
 	acfc        = []byte{0x08, 0x02}
 	accm        = []byte{0x02, 0x06, 0x00, 0x00, 0x00, 0x00}
@@ -379,9 +378,10 @@ func processPPP(link *vpnLink, buf []byte) {
 		if v := readBuf(v, confRequest); v != nil {
 			id := v[0]
 			if v := readBuf(v[1:], ipv4type); v != nil {
-				if v := readBuf(v, v4); v != nil {
+				id2 := v[0]
+				if v := readBuf(v[1:], v4); v != nil {
 					link.serverIPv4 = bytesToIPv4(v)
-					log.Printf("id: %d, Remote IPv4 requested: %s", id, link.serverIPv4)
+					log.Printf("id: %d, id2: %d, Remote IPv4 requested: %s", id, id2, link.serverIPv4)
 
 					doResp := &bytes.Buffer{}
 					doResp.Write(ppp)
@@ -390,8 +390,24 @@ func processPPP(link *vpnLink, buf []byte) {
 					doResp.Write(confAck)
 					doResp.WriteByte(id)
 					doResp.Write(ipv4type)
+					doResp.WriteByte(id2)
 					doResp.Write(v4)
 					doResp.Write(v)
+
+					toF5andSend(link.conn, doResp.Bytes())
+
+					doResp = &bytes.Buffer{}
+					doResp.Write(ppp)
+					doResp.Write(pppIPCP)
+					//
+					doResp.Write(confRequest)
+					doResp.WriteByte(id)
+					doResp.Write(ipv4type)
+					doResp.WriteByte(id2)
+					doResp.Write(v4)
+					for i := 0; i < 4; i++ {
+						doResp.WriteByte(0)
+					}
 
 					toF5andSend(link.conn, doResp.Bytes())
 
@@ -402,9 +418,10 @@ func processPPP(link *vpnLink, buf []byte) {
 		if v := readBuf(v, confAck); v != nil {
 			id := v[0]
 			if v := readBuf(v[1:], ipv4type); v != nil {
-				if v := readBuf(v, v4); v != nil {
+				id2 := v[0]
+				if v := readBuf(v[1:], v4); v != nil {
 					link.localIPv4 = bytesToIPv4(v)
-					log.Printf("id: %d, Local IPv4 acknowledged: %s", id, link.localIPv4)
+					log.Printf("id: %d, id2: %d, Local IPv4 acknowledged: %s", id, id2, link.localIPv4)
 
 					link.nameChan <- link.iface.Name()
 					link.upChan <- true
@@ -416,8 +433,9 @@ func processPPP(link *vpnLink, buf []byte) {
 		if v := readBuf(v, confNack); v != nil {
 			id := v[0]
 			if v := readBuf(v[1:], ipv4type); v != nil {
-				if v := readBuf(v, v4); v != nil {
-					log.Printf("id: %d, Local IPv4 not acknowledged: %s", id, bytesToIPv4(v))
+				id2 := v[0]
+				if v := readBuf(v[1:], v4); v != nil {
+					log.Printf("id: %d, id2: %d, Local IPv4 not acknowledged: %s", id, id2, bytesToIPv4(v))
 
 					doResp := &bytes.Buffer{}
 					doResp.Write(ppp)
@@ -426,6 +444,7 @@ func processPPP(link *vpnLink, buf []byte) {
 					doResp.Write(confRequest)
 					doResp.WriteByte(id)
 					doResp.Write(ipv4type)
+					doResp.WriteByte(id2)
 					doResp.Write(v4)
 					doResp.Write(v)
 
@@ -442,9 +461,10 @@ func processPPP(link *vpnLink, buf []byte) {
 		if v := readBuf(v, confRequest); v != nil {
 			id := v[0]
 			if v := readBuf(v[1:], ipv6type); v != nil {
-				if v := readBuf(v, v6); v != nil {
+				id2 := v[0]
+				if v := readBuf(v[1:], v6); v != nil {
 					link.serverIPv6 = bytesToIPv6(v)
-					log.Printf("id: %d, Remote IPv6 requested: %s", id, link.serverIPv6)
+					log.Printf("id: %d, id2: %d, Remote IPv6 requested: %s", id, id2, link.serverIPv6)
 
 					doResp := &bytes.Buffer{}
 					doResp.Write(ppp)
@@ -453,8 +473,24 @@ func processPPP(link *vpnLink, buf []byte) {
 					doResp.Write(confAck)
 					doResp.WriteByte(id)
 					doResp.Write(ipv6type)
+					doResp.WriteByte(id2)
 					doResp.Write(v6)
 					doResp.Write(v)
+
+					toF5andSend(link.conn, doResp.Bytes())
+
+					doResp = &bytes.Buffer{}
+					doResp.Write(ppp)
+					doResp.Write(pppIPv6CP)
+					//
+					doResp.Write(confRequest)
+					doResp.WriteByte(id)
+					doResp.Write(ipv6type)
+					doResp.WriteByte(id2)
+					doResp.Write(v6)
+					for i := 0; i < 8; i++ {
+						doResp.WriteByte(0)
+					}
 
 					toF5andSend(link.conn, doResp.Bytes())
 
@@ -465,9 +501,10 @@ func processPPP(link *vpnLink, buf []byte) {
 		if v := readBuf(v, confAck); v != nil {
 			id := v[0]
 			if v := readBuf(v[1:], ipv6type); v != nil {
-				if v := readBuf(v, v6); v != nil {
+				id2 := v[0]
+				if v := readBuf(v[1:], v6); v != nil {
 					link.localIPv6 = bytesToIPv6(v)
-					log.Printf("id: %d, Local IPv6 acknowledged: %s", id, link.localIPv6)
+					log.Printf("id: %d, id2: %d, Local IPv6 acknowledged: %s", id, id2, link.localIPv6)
 
 					return
 				}
@@ -476,8 +513,9 @@ func processPPP(link *vpnLink, buf []byte) {
 		if v := readBuf(v, confNack); v != nil {
 			id := v[0]
 			if v := readBuf(v[1:], ipv6type); v != nil {
-				if v := readBuf(v, v6); v != nil {
-					log.Printf("id: %d, Local IPv6 not acknowledged: %s", id, bytesToIPv6(v))
+				id2 := v[0]
+				if v := readBuf(v[1:], v6); v != nil {
+					log.Printf("id: %d, id2: %d, Local IPv6 not acknowledged: %s", id, id2, bytesToIPv6(v))
 
 					doResp := &bytes.Buffer{}
 					doResp.Write(ppp)
@@ -486,6 +524,7 @@ func processPPP(link *vpnLink, buf []byte) {
 					doResp.Write(confRequest)
 					doResp.WriteByte(id)
 					doResp.Write(ipv6type)
+					doResp.WriteByte(id2)
 					doResp.Write(v6)
 					doResp.Write(v)
 
@@ -600,7 +639,8 @@ func processPPP(link *vpnLink, buf []byte) {
 										doResp.Write(mtuResponse)
 										doResp.Write(mtuHeader)
 										doResp.Write(link.mtu)
-										doResp.Write(ip)
+										doResp.WriteByte(id)
+										doResp.Write(v4)
 										for i := 0; i < 4; i++ {
 											doResp.WriteByte(0)
 										}
@@ -609,33 +649,6 @@ func processPPP(link *vpnLink, buf []byte) {
 
 										toF5andSend(link.conn, doResp.Bytes())
 
-										doResp = &bytes.Buffer{}
-										doResp.Write(ppp)
-										doResp.Write(pppIPCP)
-										//
-										doResp.Write(confRequest)
-										doResp.WriteByte(id)
-										doResp.Write(ipv4type)
-										doResp.Write(v4)
-										for i := 0; i < 4; i++ {
-											doResp.WriteByte(0)
-										}
-
-										toF5andSend(link.conn, doResp.Bytes())
-
-										doResp = &bytes.Buffer{}
-										doResp.Write(ppp)
-										doResp.Write(pppIPv6CP)
-										//
-										doResp.Write(confRequest)
-										doResp.WriteByte(id)
-										doResp.Write(ipv6type)
-										doResp.Write(v6)
-										for i := 0; i < 8; i++ {
-											doResp.WriteByte(0)
-										}
-
-										toF5andSend(link.conn, doResp.Bytes())
 										return
 									}
 								}
