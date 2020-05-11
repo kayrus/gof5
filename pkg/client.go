@@ -197,13 +197,13 @@ func Connect(server, username, password string, closeSession bool) error {
 	if debug {
 		client.Transport = &RoundTripper{
 			Rt: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: false},
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: config.InsecureTLS},
 			},
 			Logger: &logger{},
 		}
 	} else {
 		client.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: false},
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: config.InsecureTLS},
 		}
 	}
 

@@ -66,7 +66,7 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 		return nil, fmt.Errorf("failed to parse connection VPN: %s", err)
 	}
 	conf := &tls.Config{
-		InsecureSkipVerify: false,
+		InsecureSkipVerify: config.InsecureTLS,
 	}
 
 	serverIPs, err := net.LookupIP(server)

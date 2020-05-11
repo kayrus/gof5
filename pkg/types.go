@@ -101,10 +101,11 @@ type Filter struct {
 
 type Config struct {
 	// defaults to true
-	PPPD     Bool         `yaml:"pppd"`
-	DNS      []string     `yaml:"dns"`
-	Routes   []*net.IPNet `yaml:"-"`
-	PPPdArgs []string     `yaml:"pppdArgs"`
+	PPPD        Bool         `yaml:"pppd"`
+	DNS         []string     `yaml:"dns"`
+	Routes      []*net.IPNet `yaml:"-"`
+	PPPdArgs    []string     `yaml:"pppdArgs"`
+	InsecureTLS bool         `yaml:"insecureTLS"`
 	// list of DNS local servers
 	// when list is empty, parsed from /etc/resolv.conf
 	DNSServers []net.IP `yaml:"-"`
@@ -134,11 +135,12 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type tmp Config
 	var s struct {
 		tmp
-		PPPD       bool     `yaml:"pppd"`
-		DNS        []string `yaml:"dns"`
-		Routes     []string `yaml:"routes"`
-		PPPdArgs   []string `yaml:"pppdArgs"`
-		DNSServers []string `yaml:"dnsServers"`
+		PPPD        bool     `yaml:"pppd"`
+		DNS         []string `yaml:"dns"`
+		Routes      []string `yaml:"routes"`
+		PPPdArgs    []string `yaml:"pppdArgs"`
+		DNSServers  []string `yaml:"dnsServers"`
+		InsecureTLS bool     `yaml:"insecureTLS"`
 	}
 
 	if err := unmarshal(&s); err != nil {
@@ -195,6 +197,8 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	for i, v := range s.DNSServers {
 		r.DNSServers[i] = net.ParseIP(v)
 	}
+
+	r.InsecureTLS = s.InsecureTLS
 
 	return nil
 }
