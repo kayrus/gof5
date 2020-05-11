@@ -300,10 +300,11 @@ var (
 	pppLCP      = []byte{0xc0, 0x21}
 	pppIPCP     = []byte{0x80, 0x21}
 	pppIPv6CP   = []byte{0x80, 0x57}
-	ping        = []byte{0x09}
-	pong        = []byte{0x0a}
+	// LCP auth
 	mtuRequest  = []byte{0x00, 0x18}
+	// Link-Discriminator
 	terminate   = []byte{0x00, 0x17}
+	// 
 	mtuResponse = []byte{0x00, 0x12}
 	protoRej    = []byte{0x00, 0x2c}
 	mtuHeader   = []byte{0x01, 0x04}
@@ -326,6 +327,8 @@ var (
 	confRej     = []byte{0x04}
 	confTermReq = []byte{0x05}
 	protoReject = []byte{0x08}
+	echoReq     = []byte{0x09}
+	echoRep     = []byte{0x0a}
 )
 
 func bytesToIPv4(bytes []byte) net.IP {
@@ -546,15 +549,17 @@ func processPPP(link *vpnLink, buf []byte) {
 					return
 				}
 			}
-			if v := readBuf(v, ping); v != nil {
+			if v := readBuf(v, echoReq); v != nil {
 				id := v[0]
-				log.Printf("id: %d, ping / pong", id)
+				if debug {
+					log.Printf("id: %d, echo", id)
+				}
 				// live pings
 				doResp := &bytes.Buffer{}
 				doResp.Write(ppp)
 				doResp.Write(pppLCP)
 				//
-				doResp.Write(pong)
+				doResp.Write(echoRep)
 				doResp.WriteByte(id)
 				doResp.Write(v[1:])
 
