@@ -135,12 +135,13 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type tmp Config
 	var s struct {
 		tmp
-		PPPD        bool     `yaml:"pppd"`
-		DNS         []string `yaml:"dns"`
-		Routes      []string `yaml:"routes"`
-		PPPdArgs    []string `yaml:"pppdArgs"`
-		DNSServers  []string `yaml:"dnsServers"`
-		InsecureTLS bool     `yaml:"insecureTLS"`
+		Routes     []string `yaml:"routes"`
+		DNSServers []string `yaml:"dnsServers"`
+		PPPdArgs   []string `yaml:"pppdArgs"`
+	}
+
+	if err := unmarshal(&s.tmp); err != nil {
+		return err
 	}
 
 	if err := unmarshal(&s); err != nil {
@@ -148,11 +149,6 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	*r = Config(s.tmp)
-
-	r.PPPD = Bool(s.PPPD)
-
-	// TODO: check DNS trailing dots
-	r.DNS = s.DNS
 
 	for _, v := range s.Routes {
 		cidr, err := parseCIDR(v)
@@ -197,8 +193,6 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	for i, v := range s.DNSServers {
 		r.DNSServers[i] = net.ParseIP(v)
 	}
-
-	r.InsecureTLS = s.InsecureTLS
 
 	return nil
 }
