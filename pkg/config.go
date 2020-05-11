@@ -85,7 +85,13 @@ func readConfig() (*Config, error) {
 	if id, sudoUID := os.Geteuid(), os.Getenv("SUDO_UID"); id == 0 && sudoUID != "" {
 		usr, err = user.LookupId(sudoUID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to detect home directory: %s", err)
+			log.Printf("failed to lookup user ID: %s", err)
+			if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
+				usr, err = user.Lookup(sudoUser)
+				if err != nil {
+					return nil, fmt.Errorf("failed to lookup user name: %s", err)
+				}
+			}
 		}
 	} else {
 		// detect dome directory
