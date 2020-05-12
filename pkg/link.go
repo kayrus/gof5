@@ -249,8 +249,8 @@ func fromF5(link *vpnLink, buf []byte) error {
 		return fmt.Errorf("incorrect F5 header: %x", buf[:4])
 	}
 
-	// read 4 bytes (uint32 size) of the next element size
 	var headerLen uint16 = 4
+	// read 2 bytes (uint16 size) of the packet size
 	pkglen := binary.BigEndian.Uint16(buf[2:4]) + headerLen
 
 	if pkglen == l {
