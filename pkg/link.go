@@ -920,6 +920,12 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 			l.errChan <- fmt.Errorf("failed to write DNS entry into buffer: %s", err)
 			return
 		}
+		if fav.Object.DNSSuffix != "" {
+			if _, err = dns.WriteString("search " + fav.Object.DNSSuffix + "\n"); err != nil {
+				l.errChan <- fmt.Errorf("failed to write search DNS entry into buffer: %s", err)
+				return
+			}
+		}
 	}
 	if err = ioutil.WriteFile(resolvPath, dns.Bytes(), 0644); err != nil {
 		l.errChan <- fmt.Errorf("failed to write %s: %s", resolvPath, err)
