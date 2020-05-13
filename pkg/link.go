@@ -20,6 +20,7 @@ import (
 
 	//goCIDR "github.com/apparentlymart/go-cidr/cidr"
 	"github.com/jackpal/gateway"
+	"github.com/pion/dtls/v2"
 	"github.com/songgao/water"
 	"github.com/vishvananda/netlink"
 	"github.com/zaninime/go-hdlc"
@@ -39,7 +40,7 @@ type vpnLink struct {
 	routesReady bool
 	link        netlink.Link
 	iface       *water.Interface
-	conn        *tls.Conn
+	conn        myConn //*tls.Conn
 	resolvConf  []byte
 	ret         error
 	errChan     chan error
@@ -55,6 +56,12 @@ type vpnLink struct {
 	mtuInt      uint16
 }
 
+type myConn interface {
+	Write([]byte) (int, error)
+	Read([]byte) (int, error)
+	Close() error
+}
+
 // init a TLS connection
 func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink, error) {
 	// TLS
@@ -65,63 +72,79 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse connection VPN: %s", err)
 	}
-	conf := &tls.Config{
-		InsecureSkipVerify: config.InsecureTLS,
-	}
 
 	serverIPs, err := net.LookupIP(server)
 	if err != nil || len(serverIPs) == 0 {
 		return nil, fmt.Errorf("failed to resolve %s: %s", server, err)
 	}
 
-	conn, err := tls.Dial("tcp", fmt.Sprintf("%s:443", server), conf)
-	if err != nil {
-		return nil, fmt.Errorf("failed to dial %s:443: %s", server, err)
-	}
+	var conn myConn
+	if false && favorite.Object.TunnelDTLS {
+		addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%s", server, favorite.Object.TunnelPortDTLS))
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve UDP address: %s", err)
+		}
+		conf := &dtls.Config{
+			InsecureSkipVerify: config.InsecureTLS,
+		}
+		conn, err = dtls.Dial("udp4", addr, conf)
+		if err != nil {
+			return nil, fmt.Errorf("failed to dial %s:%s: %s", server, favorite.Object.TunnelPortDTLS, err)
+		}
+		panic(1)
+	} else {
+		conf := &tls.Config{
+			InsecureSkipVerify: config.InsecureTLS,
+		}
+		conn, err = tls.Dial("tcp", fmt.Sprintf("%s:443", server), conf)
+		if err != nil {
+			return nil, fmt.Errorf("failed to dial %s:443: %s", server, err)
+		}
 
-	str := fmt.Sprintf("GET %s HTTP/1.0\r\nUser-Agent: %s\r\nHost: %s\r\n\r\n", purl.RequestURI(), userAgentVPN, server)
-	n, err := conn.Write([]byte(str))
-	if err != nil {
-		return nil, fmt.Errorf("failed to send VPN session request: %s", err)
-	}
+		str := fmt.Sprintf("GET %s HTTP/1.0\r\nUser-Agent: %s\r\nHost: %s\r\n\r\n", purl.RequestURI(), userAgentVPN, server)
+		n, err := conn.Write([]byte(str))
+		if err != nil {
+			return nil, fmt.Errorf("failed to send VPN session request: %s", err)
+		}
 
-	if debug {
-		log.Printf("URL: %s", str)
-		log.Printf("Sent %d bytes", n)
-	}
+		if debug {
+			log.Printf("URL: %s", str)
+			log.Printf("Sent %d bytes", n)
+		}
 
-	// TODO: http.ReadResponse()
-	buf := make([]byte, bufferSize)
-	n, err = conn.Read(buf)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get initial VPN connection response: %s", err)
-	}
+		// TODO: http.ReadResponse()
+		buf := make([]byte, bufferSize)
+		n, err = conn.Read(buf)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get initial VPN connection response: %s", err)
+		}
 
-	var clientIP, serverIP, clientIPv6, serverIPv6 string
-	for _, v := range strings.Split(string(buf), "\r\n") {
-		if v := strings.SplitN(v, ":", 2); len(v) == 2 {
-			switch v[0] {
-			case "X-VPN-client-IP":
-				clientIP = strings.TrimSpace(v[1])
-			case "X-VPN-server-IP":
-				serverIP = strings.TrimSpace(v[1])
-			case "X-VPN-client-IPv6":
-				clientIPv6 = strings.TrimSpace(v[1])
-			case "X-VPN-server-IPv6":
-				serverIPv6 = strings.TrimSpace(v[1])
+		var clientIP, serverIP, clientIPv6, serverIPv6 string
+		for _, v := range strings.Split(string(buf), "\r\n") {
+			if v := strings.SplitN(v, ":", 2); len(v) == 2 {
+				switch v[0] {
+				case "X-VPN-client-IP":
+					clientIP = strings.TrimSpace(v[1])
+				case "X-VPN-server-IP":
+					serverIP = strings.TrimSpace(v[1])
+				case "X-VPN-client-IPv6":
+					clientIPv6 = strings.TrimSpace(v[1])
+				case "X-VPN-server-IPv6":
+					serverIPv6 = strings.TrimSpace(v[1])
+				}
 			}
 		}
-	}
 
-	if debug {
-		log.Printf("Data: %s", buf)
-		log.Printf("Received %d bytes", n)
+		if debug {
+			log.Printf("Data: %s", buf)
+			log.Printf("Received %d bytes", n)
 
-		log.Printf("Client IP: %s", clientIP)
-		log.Printf("Server IP: %s", serverIP)
-		if favorite.Object.IPv6 {
-			log.Printf("Client IPv6: %s", clientIPv6)
-			log.Printf("Server IPv6: %s", serverIPv6)
+			log.Printf("Client IP: %s", clientIP)
+			log.Printf("Server IP: %s", serverIP)
+			if favorite.Object.IPv6 {
+				log.Printf("Client IPv6: %s", clientIPv6)
+				log.Printf("Server IPv6: %s", serverIPv6)
+			}
 		}
 	}
 
@@ -283,7 +306,7 @@ func readBuf(buf, sep []byte) []byte {
 	return nil
 }
 
-func toF5andSend(conn *tls.Conn, buf []byte) error {
+func toF5andSend(conn myConn, buf []byte) error {
 	data, err := toF5(buf)
 	if err != nil {
 		return err
