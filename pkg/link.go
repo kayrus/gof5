@@ -266,8 +266,19 @@ func (l *vpnLink) pppdTunToHttp(pppd *os.File) {
 func fromF5(link *vpnLink, buf []byte) error {
 	l := uint16(len(buf))
 	if l < 5 {
-		return fmt.Errorf("data is too small: %d: %s", l, hex.Dump(buf))
+		log.Printf("data is too small: %d: %s", l, hex.Dump(buf))
+		// read the tails
+		newBuf := make([]byte, bufferSize)
+		rn, err := link.conn.Read(newBuf)
+		if err != nil {
+			return fmt.Errorf("fatal read http: %s", err)
+		}
+		if debug {
+			log.Printf("Read %d bytes from http:\n%s", rn, hex.Dump(newBuf[:rn]))
+		}
+		return fromF5(link, append(buf[:], newBuf[:rn]...))
 	}
+
 	if !(buf[0] == 0xf5 && buf[1] == 00) {
 		return fmt.Errorf("incorrect F5 header: %x", buf[:4])
 	}
