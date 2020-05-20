@@ -79,8 +79,10 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 	}
 
 	var conn myConn
-	if false && favorite.Object.TunnelDTLS {
-		addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%s", server, favorite.Object.TunnelPortDTLS))
+	if config.DTLS && favorite.Object.TunnelDTLS {
+		s := fmt.Sprintf("%s:%s", server, favorite.Object.TunnelPortDTLS)
+		log.Printf("Connecting to %s using DTLS", s)
+		addr, err := net.ResolveUDPAddr("udp", s)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve UDP address: %s", err)
 		}
@@ -91,7 +93,6 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 		if err != nil {
 			return nil, fmt.Errorf("failed to dial %s:%s: %s", server, favorite.Object.TunnelPortDTLS, err)
 		}
-		panic(1)
 	} else {
 		conf := &tls.Config{
 			InsecureSkipVerify: config.InsecureTLS,

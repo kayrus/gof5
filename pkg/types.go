@@ -136,6 +136,7 @@ type Config struct {
 	Routes      []*net.IPNet `yaml:"-"`
 	PPPdArgs    []string     `yaml:"pppdArgs"`
 	InsecureTLS bool         `yaml:"insecureTLS"`
+	DTLS        bool         `yaml:"dtls"`
 	// list of DNS local servers
 	// when list is empty, parsed from /etc/resolv.conf
 	DNSServers []net.IP `yaml:"-"`
