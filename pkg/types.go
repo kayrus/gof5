@@ -58,6 +58,16 @@ func (b Bool) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	return e.EncodeElement(b.String(), start)
 }
 
+func strToBool(s string) (Bool, error) {
+	switch v := strings.ToLower(s); v {
+	case "yes":
+		return true, nil
+	case "no":
+		return false, nil
+	}
+	return false, fmt.Errorf("cannot parse boolean: %s", s)
+}
+
 type Hostname string
 
 func (h Hostname) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
@@ -268,7 +278,8 @@ func (o *Object) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		HDLCFraming     string `xml:"hdlc_framing"`
 	}
 
-	if err := d.DecodeElement(&s, &start); err != nil {
+	err := d.DecodeElement(&s, &start)
+	if err != nil {
 		return err
 	}
 	*o = Object(s.tmp)
@@ -284,13 +295,9 @@ func (o *Object) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	o.ExcludeSubnets = processCIDRs(s.ExcludeSubnets)
 	o.ExcludeSubnets6 = processCIDRs(s.ExcludeSubnets6)
 
-	switch v := strings.ToLower(s.HDLCFraming); v {
-	case "yes":
-		o.HDLCFraming = true
-	case "no":
-		o.HDLCFraming = false
-	default:
-		return fmt.Errorf("cannot parse boolean: %s", v)
+	o.HDLCFraming, err = strToBool(s.HDLCFraming)
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -329,4 +336,102 @@ type clientData struct {
 	Version       string   `xml:"version"`
 	RedirectURL   string   `xml:"redirect_url"`
 	MaxClientData int      `xml:"max_client_data"`
+}
+
+type preConfigProfile struct {
+	XMLName   xml.Name         `xml:"PROFILE"`
+	Version   string           `xml:"VERSION,attr"`
+	Servers   []Server         `xml:"SERVERS>SITEM"`
+	Session   preConfigSession `xml:"SESSION"`
+	DNSSuffix []string         `xml:"LOCATIONS>CORPORATE>DNSSUFFIX"`
+}
+
+type Server struct {
+	Address string `xml:"ADDRESS"`
+	Alias   string `xml:"ALIAS"`
+}
+
+type preConfigSession struct {
+	Limited              Bool           `xml:"-"`
+	SaveOnExit           Bool           `xml:"-"`
+	SavePasswords        Bool           `xml:"-"`
+	ReuseWinlogonCreds   Bool           `xml:"-"`
+	ReuseWinlogonSession Bool           `xml:"-"`
+	PasswordPolicy       PasswordPolicy `xml:"PASSWORD_POLICY"`
+	Update               Update         `xml:"UPDATE"`
+}
+
+func (o *preConfigSession) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type tmp preConfigSession
+	var s struct {
+		tmp
+		Limited              string `xml:"LIMITED,attr"`
+		SaveOnExit           string `xml:"SAVEONEXIT"`
+		SavePasswords        string `xml:"SAVEPASSWORDS"`
+		ReuseWinlogonCreds   string `xml:"REUSEWINLOGONCREDS"`
+		ReuseWinlogonSession string `xml:"REUSEWINLOGONSESSION"`
+	}
+
+	err := d.DecodeElement(&s, &start)
+	if err != nil {
+		return err
+	}
+	*o = preConfigSession(s.tmp)
+
+	o.Limited, err = strToBool(s.Limited)
+	if err != nil {
+		return err
+	}
+
+	o.SaveOnExit, err = strToBool(s.SaveOnExit)
+	if err != nil {
+		return err
+	}
+
+	o.SavePasswords, err = strToBool(s.SavePasswords)
+	if err != nil {
+		return err
+	}
+
+	o.ReuseWinlogonCreds, err = strToBool(s.ReuseWinlogonCreds)
+	if err != nil {
+		return err
+	}
+
+	o.ReuseWinlogonSession, err = strToBool(s.ReuseWinlogonSession)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type PasswordPolicy struct {
+	Mode    string `xml:"MODE"`
+	Timeout int    `xml:"TIMEOUT"`
+}
+
+type Update struct {
+	Mode Bool `xml:"-"`
+}
+
+func (o *Update) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type tmp Update
+	var s struct {
+		tmp
+		Mode string `xml:"MODE"`
+	}
+
+	err := d.DecodeElement(&s, &start)
+	if err != nil {
+		return err
+	}
+	*o = Update(s.tmp)
+
+	o.Mode, err = strToBool(s.Mode)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
