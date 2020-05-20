@@ -11,7 +11,7 @@ import (
 	"github.com/miekg/dns"
 )
 
-const listenAddr = "127.0.0.253"
+const defaultListenAddr = "127.0.0.1"
 
 // TODO: reverse DNS support, e.g. "in-addr.arpa"
 
@@ -39,10 +39,16 @@ func parseResolvConf(config *Config, resolvConf []byte) {
 	}
 }
 
-func startDns(config *Config, resolvConf []byte) {
+func startDns(config *Config, resolvConf []byte) string {
 	if len(config.DNSServers) == 0 {
 		parseResolvConf(config, resolvConf)
 	}
+
+	listenAddr := defaultListenAddr
+	if config.ListenDNS != "" {
+		listenAddr = config.ListenDNS
+	}
+
 	log.Printf("Serving DNS proxy on %s:53", listenAddr)
 	log.Printf("Forwarding %q DNS requests to %q", config.DNS, config.vpnServers)
 	log.Printf("Default DNS servers: %q", config.DNSServers)
@@ -67,6 +73,8 @@ func startDns(config *Config, resolvConf []byte) {
 			log.Fatalf("Failed to set tcp listener %s", err)
 		}
 	}()
+
+	return listenAddr
 }
 
 func dnsHandler(w dns.ResponseWriter, m *dns.Msg, config *Config, proto string) {

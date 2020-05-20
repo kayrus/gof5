@@ -950,7 +950,7 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 			}
 		}
 	} else {
-		startDns(config, l.resolvConf)
+		listenAddr := startDns(config, l.resolvConf)
 		if _, err = dns.WriteString("nameserver " + listenAddr + "\n"); err != nil {
 			l.errChan <- fmt.Errorf("failed to write DNS entry into buffer: %s", err)
 			return

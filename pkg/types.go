@@ -132,6 +132,7 @@ type Filter struct {
 type Config struct {
 	// defaults to true
 	PPPD        Bool         `yaml:"pppd"`
+	ListenDNS   string       `yaml:"listenDNS"`
 	DNS         []string     `yaml:"dns"`
 	Routes      []*net.IPNet `yaml:"-"`
 	PPPdArgs    []string     `yaml:"pppdArgs"`
