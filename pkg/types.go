@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"encoding/base64"
 	"encoding/xml"
 	"fmt"
 	"log"
@@ -45,6 +46,25 @@ type Favorite struct {
 }
 
 type Bool bool
+
+func (b Bool) String() string {
+	if b {
+		return "yes"
+	}
+	return "no"
+}
+
+func (b Bool) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	return e.EncodeElement(b.String(), start)
+}
+
+type Hostname string
+
+func (h Hostname) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	return e.EncodeElement(base64.StdEncoding.EncodeToString([]byte(h)), start)
+}
+
+// TODO: unmarshal for bool
 
 type Object struct {
 	SessionID                      string         `xml:"Session_ID"`
@@ -123,13 +143,6 @@ type Config struct {
 }
 
 type Cookies map[string][]string
-
-func (b Bool) String() string {
-	if b {
-		return "yes"
-	}
-	return "no"
-}
 
 func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type tmp Config
@@ -281,4 +294,39 @@ func (o *Object) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	}
 
 	return nil
+}
+
+type agentInfo struct {
+	XMLName              xml.Name `xml:"agent_info"`
+	Type                 string   `xml:"type"`
+	Version              string   `xml:"version"`
+	Platform             string   `xml:"platform"`
+	CPU                  string   `xml:"cpu"`
+	JavaScript           Bool     `xml:"javascript"`
+	ActiveX              Bool     `xml:"activex"`
+	Plugin               Bool     `xml:"plugin"`
+	LandingURI           string   `xml:"landinguri"`
+	Model                string   `xml:"model,omitempty"`
+	PlatformVersion      string   `xml:"platform_version,omitempty"`
+	MACAddress           string   `xml:"mac_address,omitempty"`
+	UniqueID             string   `xml:"unique_id,omitempty"`
+	SerialNumber         string   `xml:"serial_number,omitempty"`
+	AppID                string   `xml:"app_id,omitempty"`
+	AppVersion           string   `xml:"app_version,omitempty"`
+	JailBreak            *Bool    `xml:"jailbreak,omitempty"`
+	VPNScope             string   `xml:"vpn_scope,omitempty"`
+	VPNStartType         string   `xml:"vpn_start_type,omitempty"`
+	LockedMode           Bool     `xml:"lockedmode"`
+	VPNTunnelType        string   `xml:"vpn_tunnel_type,omitempty"`
+	Hostname             Hostname `xml:"hostname"`
+	BiometricFingerprint *Bool    `xml:"biometric_fingerprint,omitempty"`
+	DevicePasscodeSet    *Bool    `xml:"device_passcode_set,omitempty"`
+}
+
+type clientData struct {
+	XMLName       xml.Name `xml:"data"`
+	Token         string   `xml:"token"`
+	Version       string   `xml:"version"`
+	RedirectURL   string   `xml:"redirect_url"`
+	MaxClientData int      `xml:"max_client_data"`
 }

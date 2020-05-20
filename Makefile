@@ -24,3 +24,6 @@ vet:
 
 mod:
 	go mod vendor
+
+test:
+	go test -v ./pkg

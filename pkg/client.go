@@ -2,7 +2,11 @@ package pkg
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/md5"
 	"crypto/tls"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -13,6 +17,7 @@ import (
 	"net/url"
 	"os/exec"
 	"os/signal"
+	"regexp"
 	"strings"
 	"syscall"
 
@@ -21,13 +26,14 @@ import (
 )
 
 const (
-	userAgent    = "Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.1a2pre) Gecko/2008073000 Shredder/3.0a2pre ThunderBrowse/3.2.1.8"
-	userAgentVPN = "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; Trident/6.0; F5 Networks Client)"
+	userAgent        = "Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.1a2pre) Gecko/2008073000 Shredder/3.0a2pre ThunderBrowse/3.2.1.8"
+	userAgentVPN     = "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; Trident/6.0; F5 Networks Client)"
+	androidUserAgent = "Mozilla/5.0 (Linux; Android 10; SM-G975F Build/QP1A.190711.020) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/81.0.4044.138 Mobile Safari/537.36 EdgeClient/3.0.7 F5Access/3.0.7"
 )
 
 func checkRedirect(c *http.Client) func(*http.Request, []*http.Request) error {
 	return func(req *http.Request, via []*http.Request) error {
-		if req.URL.Path == "/my.logout.php3" || req.URL.Query().Get("errorcode") != "" {
+		if req.URL.Path == "/my.logout.php3" || req.URL.Path == "/vdesk/hangup.php3" || req.URL.Query().Get("errorcode") != "" {
 			// clear cookies
 			var err error
 			c.Jar, err = cookiejar.New(nil)
@@ -38,6 +44,127 @@ func checkRedirect(c *http.Client) func(*http.Request, []*http.Request) error {
 		}
 		return nil
 	}
+}
+
+func generateClientData(cData clientData) (string, error) {
+	info := agentInfo{
+		Type:       "standalone",
+		Version:    "2.0",
+		Platform:   "Linux",
+		CPU:        "x64",
+		LandingURI: "/",
+		Hostname:   "test",
+	}
+
+	log.Printf(cData.Token)
+
+	data, err := xml.Marshal(info)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal agent info: %s", err)
+	}
+
+	if info.AppID == "" {
+		// put appid to the end, when it is empty
+		r := regexp.MustCompile("></agent_info>")
+		data = []byte(r.ReplaceAllString(string(data), "><app_id></app_id></agent_info>"))
+	}
+
+	// signature must be this, when token is "1"
+	t := "4sY+pQd3zrQ5c2Fl5BwkBg=="
+
+	values := &bytes.Buffer{}
+	values.WriteString("session=&")
+	values.WriteString("device_info=" + base64.StdEncoding.EncodeToString(data) + "&")
+	values.WriteString("agent_result=&")
+	values.WriteString("token=" + cData.Token + "&")
+
+	// TODO: figure out how to calculate signature
+	// signature is calculated using cData.Token and UserAgent as a secret key
+	// 16 bytes, most probably HMAC-MD5
+	hmacMd5 := hmac.New(md5.New, []byte(cData.Token))
+
+	// write XML into HMAC calc
+	hmacMd5.Write(data)
+	//hmacMd5.Write([]byte(base64.StdEncoding.EncodeToString(data)))
+
+	sig := hmacMd5.Sum(nil)
+	s, _ := base64.StdEncoding.DecodeString(t)
+	expected := hex.EncodeToString(s)
+
+	if v := hex.EncodeToString(sig); v != expected {
+		log.Printf("Signature %q doesn't correspond to %q", v, expected)
+	}
+
+	// Uncomment this to pass the test
+	//values.WriteString("signature=" + t)
+	values.WriteString("signature=" + base64.StdEncoding.EncodeToString(sig))
+
+	clientData := base64.StdEncoding.EncodeToString(values.Bytes())
+
+	return clientData, nil
+}
+
+func loginSignature(c *http.Client, server string, _, _ *string) error {
+	log.Printf("Logging in...")
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s/my.logon.php3?outform=xml&client_version=2.0&get_token=1", server), nil)
+	if err != nil {
+		return err
+	}
+	req.Proto = "HTTP/1.0"
+	req.Header.Set("User-Agent", androidUserAgent)
+	resp, err := c.Do(req)
+	if err != nil {
+		return err
+	}
+
+	var cData clientData
+	dec := xml.NewDecoder(resp.Body)
+	err = dec.Decode(&cData)
+	resp.Body.Close()
+	if err != nil {
+		return err
+	}
+
+	clientData, err := generateClientData(cData)
+	if err != nil {
+		return err
+	}
+
+	req, err = http.NewRequest("POST", fmt.Sprintf("https://%s%s", server, cData.RedirectURL), strings.NewReader("client_data="+clientData))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", androidUserAgent)
+	req.Header.Set("Pragma", "no-cache")
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	req.Header.Set("Origin", "null")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9")
+	req.Header.Set("content-type", "application/x-www-form-urlencoded")
+	req.Header.Set("X-Requested-With", "com.f5.edge.client_ics")
+	req.Header.Set("Sec-Fetch-Site", "none")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-User", "?1")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Header.Set("Accept-Encoding", "gzip, deflate")
+	req.Header.Set("Accept-Language", "en-US;q=0.9,en;q=0.8")
+
+	resp, err = c.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 302 {
+		return fmt.Errorf("Login failed")
+	}
+
+	_, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func login(c *http.Client, server string, username, password *string) error {
@@ -56,6 +183,9 @@ func login(c *http.Client, server string, username, password *string) error {
 
 	log.Printf("Logging in...")
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s", server), nil)
+	if err != nil {
+		return err
+	}
 	req.Proto = "HTTP/1.0"
 	req.Header.Set("User-Agent", userAgent)
 	resp, err := c.Do(req)
@@ -73,6 +203,9 @@ func login(c *http.Client, server string, username, password *string) error {
 	data.Add("password", *password)
 	data.Add("vhost", "standard")
 	req, err = http.NewRequest("POST", fmt.Sprintf("https://%s/my.policy?outform=xml", server), strings.NewReader(data.Encode()))
+	if err != nil {
+		return err
+	}
 	req.Header.Set("Referer", fmt.Sprintf("https://%s/my.policy", server))
 	req.Header.Set("User-Agent", userAgent)
 	resp, err = c.Do(req)
