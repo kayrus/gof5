@@ -1,7 +1,6 @@
 package pkg
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/tls"
 	"encoding/base64"
@@ -24,12 +23,9 @@ import (
 	"github.com/pion/dtls/v2"
 	"github.com/songgao/water"
 	"github.com/vishvananda/netlink"
-	"github.com/zaninime/go-hdlc"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 )
-
-// TODO: handle "fatal read pppd: read /dev/ptmx: input/output error"
 
 const (
 	printGreen = "\033[1;32m%s\033[0m"
@@ -180,88 +176,6 @@ func ipRun(args ...string) {
 	if nil != err {
 		log.Printf("Error running /sbin/ip %q: %s", args, err)
 		//log.Fatalf("Error running /sbin/ip %q: %s", args, err)
-	}
-}
-
-func (l *vpnLink) decodeHDLC(buf []byte, src string) {
-	tmp := bytes.NewBuffer(buf)
-	frame, err := hdlc.NewDecoder(tmp).ReadFrame()
-	if err != nil {
-		log.Printf("fatal decode HDLC frame from %s: %s", src, err)
-		return
-		/*
-			l.errChan <- fmt.Errorf("fatal decode HDLC frame from %s: %s", source, err)
-			return
-		*/
-	}
-	log.Printf("Decoded %t prefix HDLC frame from %s:\n%s", frame.HasAddressCtrlPrefix, src, hex.Dump(frame.Payload))
-	h, err := ipv4.ParseHeader(frame.Payload[:])
-	if err != nil {
-		log.Printf("fatal to parse TCP header from %s: %s", src, err)
-		return
-		/*
-			l.errChan <- fmt.Errorf("fatal to parse TCP header: %s", err)
-			return
-		*/
-	}
-	log.Printf("TCP: %s", h)
-}
-
-// http->tun
-func (l *vpnLink) pppdHttpToTun(pppd *os.File) {
-	buf := make([]byte, bufferSize)
-	for {
-		select {
-		case <-l.termChan:
-			return
-		default:
-			rn, err := l.conn.Read(buf)
-			if err != nil {
-				l.errChan <- fmt.Errorf("fatal read http: %s", err)
-				return
-			}
-			if debug {
-				l.decodeHDLC(buf[:rn], "http")
-				//log.Printf("Read %d bytes from http:\n%s", rn, hex.Dump(buf[:rn]))
-			}
-			wn, err := pppd.Write(buf[:rn])
-			if err != nil {
-				l.errChan <- fmt.Errorf("fatal write to pppd: %s", err)
-				return
-			}
-			if debug {
-				log.Printf("Sent %d bytes to pppd", wn)
-			}
-		}
-	}
-}
-
-// tun->http
-func (l *vpnLink) pppdTunToHttp(pppd *os.File) {
-	buf := make([]byte, bufferSize)
-	for {
-		select {
-		case <-l.termChan:
-			return
-		default:
-			rn, err := pppd.Read(buf)
-			if err != nil {
-				l.errChan <- fmt.Errorf("fatal read pppd: %s", err)
-				return
-			}
-			if debug {
-				log.Printf("Read %d bytes from pppd:\n%s", rn, hex.Dump(buf[:rn]))
-				l.decodeHDLC(buf[:rn], "pppd")
-			}
-			wn, err := l.conn.Write(buf[:rn])
-			if err != nil {
-				l.errChan <- fmt.Errorf("fatal write to http: %s", err)
-				return
-			}
-			if debug {
-				log.Printf("Sent %d bytes to http", wn)
-			}
-		}
 	}
 }
 
@@ -814,16 +728,6 @@ func (l *vpnLink) errorHandler() {
 	l.termChan <- syscall.SIGINT
 }
 
-// terminate on pppd termination
-func (l *vpnLink) pppdWait(cmd *exec.Cmd) {
-	err := cmd.Wait()
-	if err != nil {
-		l.errChan <- fmt.Errorf("pppd %s", err)
-		return
-	}
-	l.errChan <- err
-}
-
 func cidrContainsIPs(cidr *net.IPNet, ips []net.IP) bool {
 	for _, ip := range ips {
 		if cidr.Contains(ip) {
@@ -968,21 +872,5 @@ func (l *vpnLink) restoreConfig(config *Config) {
 				log.Printf("Failed to delete %s route from %s interface: %s", cidr.String(), l.name, err)
 			}
 		}
-	}
-}
-
-// pppd log parser
-func (l *vpnLink) pppdLogParser(stderr io.Reader) {
-	scanner := bufio.NewScanner(stderr)
-	for scanner.Scan() {
-		if strings.Contains(scanner.Text(), "Using interface") {
-			if v := strings.FieldsFunc(strings.TrimSpace(scanner.Text()), splitFunc); len(v) > 0 {
-				l.nameChan <- v[len(v)-1]
-			}
-		}
-		if strings.Contains(scanner.Text(), "remote IP address") {
-			l.upChan <- true
-		}
-		log.Printf(printGreen, scanner.Text())
 	}
 }
