@@ -10,6 +10,7 @@ import (
 	"os/user"
 	"path"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 )
@@ -19,7 +20,6 @@ const (
 	configDir   = ".gof5"
 	configName  = "config.yaml"
 	cookiesName = "cookies.yaml"
-	cookieName  = "MRHSession"
 )
 
 func parseCookies(config *Config) Cookies {
@@ -42,7 +42,11 @@ func readCookies(c *http.Client, u *url.URL, config *Config) {
 	v := parseCookies(config)
 	if v, ok := v[u.Host]; ok {
 		var cookies []*http.Cookie
-		cookies = append(cookies, &http.Cookie{Name: cookieName, Value: v})
+		for _, c := range v {
+			if v := strings.Split(c, "="); len(v) == 2 {
+				cookies = append(cookies, &http.Cookie{Name: v[0], Value: v[1]})
+			}
+		}
 		c.Jar.SetCookies(u, cookies)
 	}
 }
@@ -50,12 +54,10 @@ func readCookies(c *http.Client, u *url.URL, config *Config) {
 func saveCookies(c *http.Client, u *url.URL, config *Config) error {
 	raw := parseCookies(config)
 	// empty current cookies list
-	raw[u.Host] = ""
+	raw[u.Host] = nil
 	// write down new cookies
 	for _, c := range c.Jar.Cookies(u) {
-		if c.Name == cookieName {
-			raw[u.Host] = c.Value
-		}
+		raw[u.Host] = append(raw[u.Host], c.String())
 	}
 
 	cookies, err := yaml.Marshal(&raw)
