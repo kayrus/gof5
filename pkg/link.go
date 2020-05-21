@@ -162,15 +162,14 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 	}
 
 	if !config.PPPD {
-		iface, err := water.New(water.Config{
+		link.iface, err = water.New(water.Config{
 			DeviceType: water.TUN,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create a %q interface: %s", water.TUN, err)
 		}
 
-		link.iface = iface
-		log.Printf("Created %s interface", iface.Name())
+		log.Printf("Created %s interface", link.iface.Name())
 	}
 
 	return link, nil
@@ -264,38 +263,6 @@ func (l *vpnLink) pppdTunToHttp(pppd *os.File) {
 			}
 		}
 	}
-}
-
-func fromF5(link *vpnLink) error {
-	// read the F5 packet header
-	buf := make([]byte, 2)
-	n, err := io.ReadFull(link.conn, buf)
-	if err != nil {
-		return fmt.Errorf("failed to read F5 packet header: %s", err)
-	}
-	if !(buf[0] == 0xf5 && buf[1] == 00) {
-		return fmt.Errorf("incorrect F5 header: %x", buf)
-	}
-
-	// read the F5 packet size
-	var pkglen uint16
-	err = binary.Read(link.conn, binary.BigEndian, &pkglen)
-	if err != nil {
-		return fmt.Errorf("failed to read F5 packet size: %s", err)
-	}
-
-	// read the packet
-	buf = make([]byte, pkglen)
-	n, err = io.ReadFull(link.conn, buf)
-	if err != nil {
-		return fmt.Errorf("failed to read F5 packet of the %d size: %s", pkglen, err)
-	}
-	if n != int(pkglen) {
-		return fmt.Errorf("incorrect F5 packet size: %d, expected: %d", n, pkglen)
-	}
-
-	// process the packet
-	return processPPP(link, buf)
 }
 
 func readBuf(buf, sep []byte) []byte {
@@ -704,6 +671,38 @@ func processPPP(link *vpnLink, buf []byte) error {
 	}
 
 	return fmt.Errorf("unknown PPP data:\n%s", hex.Dump(buf))
+}
+
+func fromF5(link *vpnLink) error {
+	// read the F5 packet header
+	buf := make([]byte, 2)
+	n, err := io.ReadFull(link.conn, buf)
+	if err != nil {
+		return fmt.Errorf("failed to read F5 packet header: %s", err)
+	}
+	if !(buf[0] == 0xf5 && buf[1] == 00) {
+		return fmt.Errorf("incorrect F5 header: %x", buf)
+	}
+
+	// read the F5 packet size
+	var pkglen uint16
+	err = binary.Read(link.conn, binary.BigEndian, &pkglen)
+	if err != nil {
+		return fmt.Errorf("failed to read F5 packet size: %s", err)
+	}
+
+	// read the packet
+	buf = make([]byte, pkglen)
+	n, err = io.ReadFull(link.conn, buf)
+	if err != nil {
+		return fmt.Errorf("failed to read F5 packet of the %d size: %s", pkglen, err)
+	}
+	if n != int(pkglen) {
+		return fmt.Errorf("incorrect F5 packet size: %d, expected: %d", n, pkglen)
+	}
+
+	// process the packet
+	return processPPP(link, buf)
 }
 
 // Encode F5 packet
