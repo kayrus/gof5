@@ -23,6 +23,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/howeyc/gopass"
+	"github.com/manifoldco/promptui"
 )
 
 const (
@@ -76,7 +77,7 @@ func generateClientData(cData clientData) (string, error) {
 	values.WriteString("session=&")
 	values.WriteString("device_info=" + base64.StdEncoding.EncodeToString(data) + "&")
 	values.WriteString("agent_result=&")
-	values.WriteString("token=" + cData.Token + "&")
+	values.WriteString("token=" + cData.Token)
 
 	// TODO: figure out how to calculate signature
 	// signature is calculated using cData.Token and UserAgent as a secret key
@@ -85,6 +86,9 @@ func generateClientData(cData clientData) (string, error) {
 
 	// write XML into HMAC calc
 	hmacMd5.Write(data)
+
+	log.Printf("Simple MD5 of the values: %x", md5.Sum(values.Bytes()))
+
 	//hmacMd5.Write([]byte(base64.StdEncoding.EncodeToString(data)))
 
 	sig := hmacMd5.Sum(nil)
@@ -97,7 +101,7 @@ func generateClientData(cData clientData) (string, error) {
 
 	// Uncomment this to pass the test
 	//values.WriteString("signature=" + t)
-	values.WriteString("signature=" + base64.StdEncoding.EncodeToString(sig))
+	values.WriteString("&signature=" + base64.StdEncoding.EncodeToString(sig))
 
 	clientData := base64.StdEncoding.EncodeToString(values.Bytes())
 
@@ -232,9 +236,12 @@ func login(c *http.Client, server string, username, password *string) error {
 	return nil
 }
 
-func parseProfile(body []byte) (string, error) {
+func parseProfile(reader io.ReadCloser) (string, error) {
 	var profiles Profiles
-	if err := xml.Unmarshal(body, &profiles); err != nil {
+	dec := xml.NewDecoder(reader)
+	err := dec.Decode(&profiles)
+	reader.Close()
+	if err != nil {
 		return "", fmt.Errorf("failed to unmarshal a response: %s", err)
 	}
 
@@ -267,15 +274,12 @@ func getConnectionOptions(c *http.Client, server string, profile string) (*Favor
 		return nil, fmt.Errorf("failed to read a request: %s", err)
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read a response: %s", err)
-	}
-	resp.Body.Close()
-
 	// parse profile
 	var favorite Favorite
-	if err = xml.Unmarshal(body, &favorite); err != nil {
+	dec := xml.NewDecoder(resp.Body)
+	err = dec.Decode(&favorite)
+	resp.Body.Close()
+	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal a response: %s", err)
 	}
 
@@ -291,7 +295,43 @@ func closeVPNSession(c *http.Client, server string) {
 	defer c.Do(r)
 }
 
-func Connect(server, username, password string, closeSession bool) error {
+func getServersList(c *http.Client, server string) (*url.URL, error) {
+	r, err := http.NewRequest("GET", fmt.Sprintf("https://%s/pre/config.php", server), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create a request to get servers list: %s", err)
+	}
+	resp, err := c.Do(r)
+	if err != nil {
+		return nil, fmt.Errorf("failed to request servers list: %s", err)
+	}
+
+	var s preConfigProfile
+	dec := xml.NewDecoder(resp.Body)
+	err = dec.Decode(&s)
+	resp.Body.Close()
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal servers list: %s", err)
+	}
+
+	prompt := promptui.Select{
+		Label: "Select Server",
+		Items: s.Servers,
+	}
+
+	i, _, err := prompt.Run()
+	if err != nil {
+		return nil, fmt.Errorf("prompt failed: %s", err)
+	}
+
+	u, err := url.Parse(s.Servers[i].Address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse server hostname: %s", err)
+	}
+
+	return u, nil
+}
+
+func Connect(server, username, password string, closeSession, sel bool) error {
 	u, err := url.Parse(fmt.Sprintf("%s", server))
 	if err != nil {
 		return fmt.Errorf("failed to parse server hostname: %s", err)
@@ -340,6 +380,15 @@ func Connect(server, username, password string, closeSession bool) error {
 		}
 	}
 
+	// when server select list has been chosen
+	if sel {
+		u, err = getServersList(client, server)
+		if err != nil {
+			return err
+		}
+		server = u.Host
+	}
+
 	// read cookies
 	readCookies(client, u, config)
 
@@ -376,13 +425,7 @@ func Connect(server, username, password string, closeSession bool) error {
 		}
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read VPN profiles: %s", err)
-	}
-	resp.Body.Close()
-
-	profile, err := parseProfile(body)
+	profile, err := parseProfile(resp.Body)
 	if err != nil {
 		return fmt.Errorf("failed to parse VPN profiles: %s", err)
 	}
