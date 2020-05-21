@@ -792,6 +792,7 @@ func (l *vpnLink) tunToHttp() {
 			rn, err := l.iface.Read(buf)
 			if err != nil {
 				l.errChan <- fmt.Errorf("Fatal read tun: %s", err)
+				return
 			}
 			if debug {
 				log.Printf("Read %d bytes from tun:\n%s", rn, hex.Dump(buf[:rn]))
@@ -913,6 +914,7 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 		gw, err := gateway.DiscoverGateway()
 		if err != nil {
 			l.errChan <- fmt.Errorf("failed to discover the gateway: %s", err)
+			return
 		}
 
 		ipRun("route", "add", l.serverIPs[0].String(), "via", gw.String(), "proto", "unspec", "metric", "1")
@@ -949,6 +951,7 @@ func (l *vpnLink) restoreConfig(config *Config) {
 		gw, err := gateway.DiscoverGateway()
 		if err != nil {
 			l.errChan <- fmt.Errorf("failed to discover the gateway: %s", err)
+			return
 		}
 
 		ipRun("route", "del", l.serverIPs[0].String(), "via", gw.String(), "proto", "unspec", "metric", "1")
