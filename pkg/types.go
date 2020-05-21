@@ -154,7 +154,7 @@ type Config struct {
 	vpnServers []net.IP
 }
 
-type Cookies map[string][]string
+type Cookies map[string]string
 
 func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type tmp Config
