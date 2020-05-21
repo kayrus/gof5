@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 
 	//goCIDR "github.com/apparentlymart/go-cidr/cidr"
@@ -36,6 +37,7 @@ const (
 )
 
 type vpnLink struct {
+	sync.Mutex
 	name        string
 	routesReady bool
 	link        netlink.Link
@@ -164,7 +166,7 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 			DeviceType: water.TUN,
 		})
 		if err != nil {
-			log.Fatal(err)
+			return nil, fmt.Errorf("failed to create a %q interface: %s", water.TUN, err)
 		}
 
 		link.iface = iface
@@ -264,50 +266,36 @@ func (l *vpnLink) pppdTunToHttp(pppd *os.File) {
 	}
 }
 
-func fromF5(link *vpnLink, buf []byte) error {
-	l := uint16(len(buf))
-	if l < 5 {
-		log.Printf("data is too small: %d: %s", l, hex.Dump(buf))
-		// read the tails
-		newBuf := make([]byte, bufferSize)
-		rn, err := link.conn.Read(newBuf)
-		if err != nil {
-			return fmt.Errorf("fatal read http: %s", err)
-		}
-		if debug {
-			log.Printf("Read %d bytes from http:\n%s", rn, hex.Dump(newBuf[:rn]))
-		}
-		return fromF5(link, append(buf[:], newBuf[:rn]...))
-	}
-
-	if !(buf[0] == 0xf5 && buf[1] == 00) {
-		return fmt.Errorf("incorrect F5 header: %x", buf[:4])
-	}
-
-	var headerLen uint16 = 4
-	// read 2 bytes (uint16 size) of the packet size
-	pkglen := binary.BigEndian.Uint16(buf[2:4]) + headerLen
-
-	if pkglen == l {
-		processPPP(link, buf[headerLen:pkglen])
-		return nil
-	}
-
-	if pkglen < l {
-		// recursively process multiple F5 packets in one PPP packet
-		return fromF5(link, buf[pkglen:])
-	}
-
-	// read the tails
-	newBuf := make([]byte, bufferSize)
-	rn, err := link.conn.Read(newBuf)
+func fromF5(link *vpnLink) error {
+	// read the F5 packet header
+	buf := make([]byte, 2)
+	n, err := io.ReadFull(link.conn, buf)
 	if err != nil {
-		return fmt.Errorf("fatal read http: %s", err)
+		return fmt.Errorf("failed to read F5 packet header: %s", err)
 	}
-	if debug {
-		log.Printf("Read %d bytes from http:\n%s", rn, hex.Dump(newBuf[:rn]))
+	if !(buf[0] == 0xf5 && buf[1] == 00) {
+		return fmt.Errorf("incorrect F5 header: %x", buf)
 	}
-	return fromF5(link, append(buf[:], newBuf[:rn]...))
+
+	// read the F5 packet size
+	var pkglen uint16
+	err = binary.Read(link.conn, binary.BigEndian, &pkglen)
+	if err != nil {
+		return fmt.Errorf("failed to read F5 packet size: %s", err)
+	}
+
+	// read the packet
+	buf = make([]byte, pkglen)
+	n, err = io.ReadFull(link.conn, buf)
+	if err != nil {
+		return fmt.Errorf("failed to read F5 packet of the %d size: %s", pkglen, err)
+	}
+	if n != int(pkglen) {
+		return fmt.Errorf("incorrect F5 packet size: %d, expected: %d", n, pkglen)
+	}
+
+	// process the packet
+	return processPPP(link, buf)
 }
 
 func readBuf(buf, sep []byte) []byte {
@@ -316,18 +304,6 @@ func readBuf(buf, sep []byte) []byte {
 		return buf[len(sep):]
 	}
 	return nil
-}
-
-func toF5andSend(conn myConn, buf []byte) error {
-	data, err := toF5(buf)
-	if err != nil {
-		return err
-	}
-	if debug {
-		log.Printf("Sending:\n%s", hex.Dump(data))
-	}
-	_, err = conn.Write(data)
-	return err
 }
 
 var (
@@ -374,7 +350,7 @@ func bytesToIPv6(bytes []byte) net.IP {
 	return net.IP(append([]byte{0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, append(bytes[:0:0], bytes...)...))
 }
 
-func processPPP(link *vpnLink, buf []byte) {
+func processPPP(link *vpnLink, buf []byte) error {
 	// process ipv4 traffic
 	if v := readBuf(buf, ipv4header); v != nil {
 		if debug {
@@ -385,12 +361,12 @@ func processPPP(link *vpnLink, buf []byte) {
 
 		wn, err := link.iface.Write(v)
 		if err != nil {
-			log.Fatalf("Fatal write to tun: %s", err)
+			return fmt.Errorf("fatal write to tun: %s", err)
 		}
 		if debug {
 			log.Printf("Sent %d bytes to tun", wn)
 		}
-		return
+		return nil
 	}
 
 	// process ipv6 traffic
@@ -403,12 +379,12 @@ func processPPP(link *vpnLink, buf []byte) {
 
 		wn, err := link.iface.Write(v)
 		if err != nil {
-			log.Fatalf("Fatal write to tun: %s", err)
+			return fmt.Errorf("fatal write to tun: %s", err)
 		}
 		if debug {
 			log.Printf("Sent %d bytes to tun", wn)
 		}
-		return
+		return nil
 	}
 
 	// TODO: support IPv4 only
@@ -432,7 +408,10 @@ func processPPP(link *vpnLink, buf []byte) {
 					doResp.Write(v4)
 					doResp.Write(v)
 
-					toF5andSend(link.conn, doResp.Bytes())
+					err := toF5(link.conn, doResp.Bytes())
+					if err != nil {
+						return err
+					}
 
 					doResp = &bytes.Buffer{}
 					doResp.Write(ppp)
@@ -447,9 +426,7 @@ func processPPP(link *vpnLink, buf []byte) {
 						doResp.WriteByte(0)
 					}
 
-					toF5andSend(link.conn, doResp.Bytes())
-
-					return
+					return toF5(link.conn, doResp.Bytes())
 				}
 			}
 		}
@@ -461,10 +438,11 @@ func processPPP(link *vpnLink, buf []byte) {
 					link.localIPv4 = bytesToIPv4(v)
 					log.Printf("id: %d, id2: %d, Local IPv4 acknowledged: %s", id, id2, link.localIPv4)
 
+					// connection established
 					link.nameChan <- link.iface.Name()
 					link.upChan <- true
 
-					return
+					return nil
 				}
 			}
 		}
@@ -486,9 +464,7 @@ func processPPP(link *vpnLink, buf []byte) {
 					doResp.Write(v4)
 					doResp.Write(v)
 
-					toF5andSend(link.conn, doResp.Bytes())
-
-					return
+					return toF5(link.conn, doResp.Bytes())
 				}
 			}
 		}
@@ -515,7 +491,10 @@ func processPPP(link *vpnLink, buf []byte) {
 					doResp.Write(v6)
 					doResp.Write(v)
 
-					toF5andSend(link.conn, doResp.Bytes())
+					err := toF5(link.conn, doResp.Bytes())
+					if err != nil {
+						return err
+					}
 
 					doResp = &bytes.Buffer{}
 					doResp.Write(ppp)
@@ -530,9 +509,7 @@ func processPPP(link *vpnLink, buf []byte) {
 						doResp.WriteByte(0)
 					}
 
-					toF5andSend(link.conn, doResp.Bytes())
-
-					return
+					return toF5(link.conn, doResp.Bytes())
 				}
 			}
 		}
@@ -544,7 +521,7 @@ func processPPP(link *vpnLink, buf []byte) {
 					link.localIPv6 = bytesToIPv6(v)
 					log.Printf("id: %d, id2: %d, Local IPv6 acknowledged: %s", id, id2, link.localIPv6)
 
-					return
+					return nil
 				}
 			}
 		}
@@ -566,8 +543,7 @@ func processPPP(link *vpnLink, buf []byte) {
 					doResp.Write(v6)
 					doResp.Write(v)
 
-					toF5andSend(link.conn, doResp.Bytes())
-					return
+					return toF5(link.conn, doResp.Bytes())
 				}
 			}
 		}
@@ -580,8 +556,7 @@ func processPPP(link *vpnLink, buf []byte) {
 			if v := readBuf(v, confTermReq); v != nil {
 				id := v[0]
 				if v := readBuf(v[1:], terminate); v != nil {
-					link.errChan <- fmt.Errorf("id: %d, Link terminated with: %s", id, v)
-					return
+					return fmt.Errorf("id: %d, Link terminated with: %s", id, v)
 				}
 			}
 			if v := readBuf(v, echoReq); v != nil {
@@ -598,14 +573,13 @@ func processPPP(link *vpnLink, buf []byte) {
 				doResp.WriteByte(id)
 				doResp.Write(v[1:])
 
-				toF5andSend(link.conn, doResp.Bytes())
-				return
+				return toF5(link.conn, doResp.Bytes())
 			}
 			if v := readBuf(v, protoReject); v != nil {
 				id := v[0]
 				if v := readBuf(v[1:], protoRej); v != nil {
 					log.Printf("id: %d, Protocol reject:\n%s", id, hex.Dump(v))
-					return
+					return nil
 				}
 			}
 			// it is pppLCP
@@ -638,7 +612,10 @@ func processPPP(link *vpnLink, buf []byte) {
 								doResp.Write(pfc)
 								doResp.Write(acfc)
 
-								toF5andSend(link.conn, doResp.Bytes())
+								err := toF5(link.conn, doResp.Bytes())
+								if err != nil {
+									return err
+								}
 
 								doResp = &bytes.Buffer{}
 								doResp.Write(ppp)
@@ -651,14 +628,12 @@ func processPPP(link *vpnLink, buf []byte) {
 								doResp.Write(magicHeader)
 								doResp.Write(magic)
 
-								toF5andSend(link.conn, doResp.Bytes())
-
-								return
+								return toF5(link.conn, doResp.Bytes())
 							} else {
-								log.Fatalf("Wrong magic header")
+								return fmt.Errorf("wrong magic header")
 							}
 						} else {
-							log.Fatalf("Wrong ACCM")
+							return fmt.Errorf("wrong ACCM")
 						}
 					}
 				}
@@ -687,9 +662,7 @@ func processPPP(link *vpnLink, buf []byte) {
 										doResp.Write(pfc)
 										doResp.Write(acfc)
 
-										toF5andSend(link.conn, doResp.Bytes())
-
-										return
+										return toF5(link.conn, doResp.Bytes())
 									}
 								}
 							}
@@ -706,7 +679,7 @@ func processPPP(link *vpnLink, buf []byte) {
 						if v := readBuf(v, pfc); v != nil {
 							if v := readBuf(v, acfc); v != nil {
 								log.Printf("id: %d, IPV6 accepted", id)
-								return
+								return nil
 							}
 						}
 					}
@@ -717,42 +690,31 @@ func processPPP(link *vpnLink, buf []byte) {
 				if v := readBuf(v[1:], mtuRequest); v != nil {
 					if v := readBuf(v, mtuHeader); v != nil {
 						if v := readBuf(v, link.mtu); v != nil {
-							log.Fatalf("id: %d, MTU not acknowledged:\n%s", id, hex.Dump(v))
+							return fmt.Errorf("id: %d, MTU not acknowledged:\n%s", id, hex.Dump(v))
 						}
 					}
 				}
 				if v := readBuf(v[1:], ipv4type); v != nil {
 					if v := readBuf(v, magicHeader); v != nil {
-						log.Fatalf("id: %d, IPv4 not acknowledged:\n%s", id, hex.Dump(v))
+						return fmt.Errorf("id: %d, IPv4 not acknowledged:\n%s", id, hex.Dump(v))
 					}
 				}
 			}
 		}
 	}
 
-	log.Printf("Unknown PPP data:\n%s", hex.Dump(buf))
-
-	return
+	return fmt.Errorf("unknown PPP data:\n%s", hex.Dump(buf))
 }
 
 // Encode F5 packet
 // http->tun
 func (l *vpnLink) httpToTun() {
-	buf := make([]byte, bufferSize)
 	for {
 		select {
 		case <-l.termChan:
 			return
 		default:
-			rn, err := l.conn.Read(buf)
-			if err != nil {
-				l.errChan <- fmt.Errorf("fatal read http: %s", err)
-				return
-			}
-			if debug {
-				log.Printf("Read %d bytes from http:\n%s", rn, hex.Dump(buf[:rn]))
-			}
-			err = fromF5(l, buf[:rn])
+			err := fromF5(l)
 			if err != nil {
 				l.errChan <- err
 				return
@@ -761,82 +723,57 @@ func (l *vpnLink) httpToTun() {
 	}
 }
 
-func toF5(buf []byte) ([]byte, error) {
-	if len(buf) == 0 {
-		return nil, fmt.Errorf("cannot encapsulate zero packet")
+func toF5(conn myConn, buf []byte) error {
+	// TODO: figure out whether each Write creates an independent TCP packet
+	// probably buffer is not a bad idea
+	length := len(buf)
+	if length == 0 {
+		return fmt.Errorf("cannot encapsulate zero packet")
 	}
 
-	if buf[0] == 0x45 {
-		buf = append(ipv4header, buf...)
+	switch buf[0] {
+	case 0x45, 0x46:
+		length += len(ipv4header)
+	case 0x60:
+		length += len(ipv6header)
 	}
 
-	// deal with the "Protocol reject: 46 c0"
-	if buf[0] == 0x46 {
-		buf = append(ipv4header, buf...)
-	}
-
-	if buf[0] == 0x60 {
-		buf = append(ipv6header, buf...)
-	}
-
-	lenght := len(buf)
-
-	tmp := bytes.NewBuffer([]byte{0xf5, 0x00})
-
-	err := binary.Write(tmp, binary.BigEndian, uint16(lenght))
+	_, err := conn.Write([]byte{0xf5, 0x00})
 	if err != nil {
-		return nil, fmt.Errorf("failed to write F5 header size: %s", err)
+		return fmt.Errorf("failed to write F5 header: %s", err)
 	}
-
-	n, err := tmp.Write(buf)
+	err = binary.Write(conn, binary.BigEndian, uint16(length))
 	if err != nil {
-		return nil, fmt.Errorf("failed to write data to F5 packet: %s", err)
-	}
-	if n != lenght {
-		return nil, fmt.Errorf("written data length mismatch: %d != %d", n, lenght)
+		return fmt.Errorf("failed to write F5 header size: %s", err)
 	}
 
-	return tmp.Bytes(), nil
+	switch buf[0] {
+	case 0x45:
+		_, err = conn.Write(ipv4header)
+	case 0x46:
+		// deal with the "Protocol reject: 46 c0"
+		_, err = conn.Write(ipv4header)
+	case 0x60:
+		_, err = conn.Write(ipv6header)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to write IP header: %s", err)
+	}
+
+	if debug {
+		log.Printf("Sending from pppd:\n%s", hex.Dump(buf))
+	}
+
+	wn, err := conn.Write(buf)
+	if err != nil {
+		return fmt.Errorf("fatal write to http: %s", err)
+	}
+	if debug {
+		log.Printf("Sent %d bytes to http", wn)
+	}
+
+	return nil
 }
-
-/*
-func toF5(buf []byte) ([]byte, error) {
-	lenght := len(buf)
-	if lenght == 0 {
-		return nil, fmt.Errorf("cannot encapsulate zero slice")
-	}
-
-	tmp := &bytes.Buffer{}
-	tmp.Write([]byte{0xf5, 0x00})
-
-	var hl uint16
-	// add ipv4 header
-	if buf[0] == 0x45 {
-		tmp.Write(ipv4header)
-		hl++
-	}
-	// add ipv6 header
-	if buf[0] == 0x60 {
-		tmp.Write(ipv6header)
-		hl++
-	}
-
-	err := binary.Write(tmp, binary.BigEndian, uint16(lenght)+hl)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write F5 header size: %s", err)
-	}
-
-	n, err := tmp.Write(buf)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write data to F5 packet: %s", err)
-	}
-	if n != lenght {
-		return nil, fmt.Errorf("written data length mismatch: %d != %d", n, lenght)
-	}
-
-	return tmp.Bytes(), nil
-}
-*/
 
 // Decode into F5 packet
 // tun->http
@@ -854,7 +791,7 @@ func (l *vpnLink) tunToHttp() {
 		default:
 			rn, err := l.iface.Read(buf)
 			if err != nil {
-				log.Fatalf("Fatal read tun: %s", err)
+				l.errChan <- fmt.Errorf("Fatal read tun: %s", err)
 			}
 			if debug {
 				log.Printf("Read %d bytes from tun:\n%s", rn, hex.Dump(buf[:rn]))
@@ -862,22 +799,10 @@ func (l *vpnLink) tunToHttp() {
 				log.Printf("ipv4 from tun: %s", header)
 			}
 
-			data, err := toF5(buf[:rn])
+			err = toF5(l.conn, buf[:rn])
 			if err != nil {
 				l.errChan <- err
 				return
-			}
-			if debug {
-				log.Printf("Converted data from pppd:\n%s", hex.Dump(data))
-			}
-
-			wn, err := l.conn.Write(data)
-			if err != nil {
-				l.errChan <- fmt.Errorf("fatal write to http: %s", err)
-				return
-			}
-			if debug {
-				log.Printf("Sent %d bytes to http", wn)
 			}
 		}
 	}
@@ -929,6 +854,8 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 		}
 	}
 
+	l.Lock()
+	defer l.Unlock()
 	// read current resolv.conf
 	// reading it here in order to avoid conflicts, when the second VPN connection is established in parallel
 	l.resolvConf, err = ioutil.ReadFile(resolvPath)
@@ -1008,6 +935,9 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 
 // restore config
 func (l *vpnLink) restoreConfig(config *Config) {
+	l.Lock()
+	defer l.Unlock()
+
 	if l.resolvConf != nil {
 		log.Printf("Restoring original %s", resolvPath)
 		if err := ioutil.WriteFile(resolvPath, l.resolvConf, 0644); err != nil {
@@ -1015,7 +945,7 @@ func (l *vpnLink) restoreConfig(config *Config) {
 		}
 	}
 
-	if !config.PPPD {
+	if l.routesReady && !bool(config.PPPD) {
 		gw, err := gateway.DiscoverGateway()
 		if err != nil {
 			l.errChan <- fmt.Errorf("failed to discover the gateway: %s", err)
