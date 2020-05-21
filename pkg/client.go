@@ -85,13 +85,23 @@ func generateClientData(cData clientData) (string, error) {
 	hmacMd5 := hmac.New(md5.New, []byte(cData.Token))
 
 	// write XML into HMAC calc
-	hmacMd5.Write(data)
+	hmacMd5.Write(values.Bytes())
+	sig := hmacMd5.Sum(nil)
 
-	log.Printf("Simple MD5 of the values: %x", md5.Sum(values.Bytes()))
+	log.Printf("HMAC of the values: %x", sig)
+
+	hmacMd5 = hmac.New(md5.New, []byte(cData.Token))
+
+	// write XML into HMAC calc
+	hmacMd5.Write(data)
+	sig = hmacMd5.Sum(nil)
+	log.Printf("HMAC of the data: %x", sig)
+
+	log.Printf("Simple hash of the values: %x", md5.Sum(values.Bytes()))
+	log.Printf("Simple hash of the data: %x", md5.Sum(data))
 
 	//hmacMd5.Write([]byte(base64.StdEncoding.EncodeToString(data)))
 
-	sig := hmacMd5.Sum(nil)
 	s, _ := base64.StdEncoding.DecodeString(t)
 	expected := hex.EncodeToString(s)
 
