@@ -239,7 +239,7 @@ func login(c *http.Client, server string, username, password *string) error {
 	*/
 
 	// TODO: parse response 302 location and error code
-	if resp.StatusCode == 302 || bytes.Contains(body, []byte("Session Expired/Timeout")) {
+	if resp.StatusCode == 302 || bytes.Contains(body, []byte("Session Expired/Timeout")) || bytes.Contains(body, []byte("The username or password is not correct")) {
 		return fmt.Errorf("wrong credentials")
 	}
 
@@ -433,6 +433,10 @@ func Connect(server, username, password string, closeSession, sel bool) error {
 		if err != nil {
 			return fmt.Errorf("failed to get VPN profiles: %s", err)
 		}
+	}
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("wrong response code on profiles get: %d", resp.StatusCode)
 	}
 
 	profile, err := parseProfile(resp.Body)
