@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"regexp"
+	"runtime"
 	"strings"
 	"syscall"
 
@@ -486,7 +487,12 @@ func Connect(server, username, password string, closeSession, sel bool) error {
 			log.Printf("pppd args: %q", config.PPPdArgs)
 		}
 
-		cmd = exec.Command("pppd", config.PPPdArgs...)
+		switch runtime.GOOS {
+		default:
+			cmd = exec.Command("pppd", config.PPPdArgs...)
+		case "freebsd":
+			cmd = exec.Command("ppp", "-direct")
+		}
 	}
 
 	// error handler
@@ -496,13 +502,22 @@ func Connect(server, username, password string, closeSession, sel bool) error {
 	go link.waitAndConfig(config, favorite)
 
 	if config.PPPD {
-		stderr, err := cmd.StderrPipe()
-		if err != nil {
-			return fmt.Errorf("cannot allocate stderr pipe: %s", err)
+		if runtime.GOOS == "freebsd" {
+			// pppd log parser
+			go link.pppLogParser()
+		} else {
+			/*
+				// read file descriptor 3
+				stderr, w, err := os.Pipe()
+				cmd.ExtraFiles = []*os.File{w}
+			*/
+			stderr, err := cmd.StderrPipe()
+			if err != nil {
+				return fmt.Errorf("cannot allocate stderr pipe: %s", err)
+			}
+			// pppd log parser
+			go link.pppdLogParser(stderr)
 		}
-
-		// pppd log parser
-		go link.pppdLogParser(stderr)
 
 		pppd, err := pty.Start(cmd)
 		if err != nil {

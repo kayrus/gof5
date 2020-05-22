@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -27,25 +28,27 @@ const (
 
 type vpnLink struct {
 	sync.Mutex
-	name        string
-	routesReady bool
-	link        netlink.Link
-	iface       *water.Interface
-	conn        myConn //*tls.Conn
-	resolvConf  []byte
-	ret         error
-	errChan     chan error
-	upChan      chan bool
-	nameChan    chan string
-	termChan    chan os.Signal
-	serverIPs   []net.IP
-	localIPv4   net.IP
-	serverIPv4  net.IP
-	localIPv6   net.IP
-	serverIPv6  net.IP
-	mtu         []byte
-	mtuInt      uint16
-	gateways    []net.IP
+	name              string
+	routesReady       bool
+	serverRoutesReady bool
+	link              netlink.Link
+	iface             *water.Interface
+	conn              myConn //*tls.Conn
+	resolvConf        []byte
+	ret               error
+	errChan           chan error
+	upChan            chan bool
+	nameChan          chan string
+	termChan          chan os.Signal
+	serverIPs         []net.IP
+	localIPv4         net.IP
+	serverIPv4        net.IP
+	localIPv6         net.IP
+	serverIPv6        net.IP
+	mtu               []byte
+	mtuInt            uint16
+	gateways          []net.IP
+	peerGW            net.IP
 }
 
 type myConn interface {
@@ -70,7 +73,15 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 		return nil, fmt.Errorf("failed to resolve %s: %s", server, err)
 	}
 
-	var conn myConn
+	// define link channels
+	link := &vpnLink{
+		serverIPs: serverIPs,
+		errChan:   make(chan error, 1),
+		upChan:    make(chan bool, 1),
+		nameChan:  make(chan string, 1),
+		termChan:  make(chan os.Signal, 1),
+	}
+
 	if config.DTLS && favorite.Object.TunnelDTLS {
 		s := fmt.Sprintf("%s:%s", server, favorite.Object.TunnelPortDTLS)
 		log.Printf("Connecting to %s using DTLS", s)
@@ -81,7 +92,7 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 		conf := &dtls.Config{
 			InsecureSkipVerify: config.InsecureTLS,
 		}
-		conn, err = dtls.Dial("udp4", addr, conf)
+		link.conn, err = dtls.Dial("udp4", addr, conf)
 		if err != nil {
 			return nil, fmt.Errorf("failed to dial %s:%s: %s", server, favorite.Object.TunnelPortDTLS, err)
 		}
@@ -89,13 +100,13 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 		conf := &tls.Config{
 			InsecureSkipVerify: config.InsecureTLS,
 		}
-		conn, err = tls.Dial("tcp", fmt.Sprintf("%s:443", server), conf)
+		link.conn, err = tls.Dial("tcp", fmt.Sprintf("%s:443", server), conf)
 		if err != nil {
 			return nil, fmt.Errorf("failed to dial %s:443: %s", server, err)
 		}
 
 		str := fmt.Sprintf("GET %s HTTP/1.0\r\nUser-Agent: %s\r\nHost: %s\r\n\r\n", purl.RequestURI(), userAgentVPN, server)
-		n, err := conn.Write([]byte(str))
+		n, err := link.conn.Write([]byte(str))
 		if err != nil {
 			return nil, fmt.Errorf("failed to send VPN session request: %s", err)
 		}
@@ -107,23 +118,22 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 
 		// TODO: http.ReadResponse()
 		buf := make([]byte, bufferSize)
-		n, err = conn.Read(buf)
+		n, err = link.conn.Read(buf)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get initial VPN connection response: %s", err)
 		}
 
-		var clientIP, serverIP, clientIPv6, serverIPv6 string
 		for _, v := range strings.Split(string(buf), "\r\n") {
 			if v := strings.SplitN(v, ":", 2); len(v) == 2 {
 				switch v[0] {
 				case "X-VPN-client-IP":
-					clientIP = strings.TrimSpace(v[1])
+					link.localIPv4 = net.ParseIP(strings.TrimSpace(v[1]))
 				case "X-VPN-server-IP":
-					serverIP = strings.TrimSpace(v[1])
+					link.serverIPv4 = net.ParseIP(strings.TrimSpace(v[1]))
 				case "X-VPN-client-IPv6":
-					clientIPv6 = strings.TrimSpace(v[1])
+					link.localIPv6 = net.ParseIP(strings.TrimSpace(v[1]))
 				case "X-VPN-server-IPv6":
-					serverIPv6 = strings.TrimSpace(v[1])
+					link.serverIPv6 = net.ParseIP(strings.TrimSpace(v[1]))
 				}
 			}
 		}
@@ -132,23 +142,13 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 			log.Printf("Data: %s", buf)
 			log.Printf("Received %d bytes", n)
 
-			log.Printf("Client IP: %s", clientIP)
-			log.Printf("Server IP: %s", serverIP)
+			log.Printf("Client IP: %s", link.localIPv4)
+			log.Printf("Server IP: %s", link.serverIPv4)
 			if favorite.Object.IPv6 {
-				log.Printf("Client IPv6: %s", clientIPv6)
-				log.Printf("Server IPv6: %s", serverIPv6)
+				log.Printf("Client IPv6: %s", link.localIPv6)
+				log.Printf("Server IPv6: %s", link.serverIPv6)
 			}
 		}
-	}
-
-	// define link channels
-	link := &vpnLink{
-		conn:      conn,
-		serverIPs: serverIPs,
-		errChan:   make(chan error, 1),
-		upChan:    make(chan bool, 1),
-		nameChan:  make(chan string, 1),
-		termChan:  make(chan os.Signal, 1),
 	}
 
 	if !config.PPPD {
@@ -193,7 +193,6 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 	}
 
 	if config.PPPD {
-		// TODO: understand why it hangs here. Two channel readers?
 		// wait for tun up
 		if !<-l.upChan {
 			l.errChan <- fmt.Errorf("unexpected tun status event")
@@ -243,28 +242,29 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 
 	// set routes
 	log.Printf("Setting routes on %s interface", l.name)
-	l.link, err = netlink.LinkByName(l.name)
-	if err != nil {
-		l.errChan <- fmt.Errorf("failed to detect %s interface: %s", l.name, err)
-		return
-	}
-
 	if !config.PPPD {
+		l.link, err = netlink.LinkByName(l.name)
+		if err != nil {
+			l.errChan <- fmt.Errorf("failed to detect %s interface: %s", l.name, err)
+			return
+		}
 		err = netlink.LinkSetMTU(l.link, int(l.mtuInt))
 		if err != nil {
 			l.errChan <- fmt.Errorf("failed to set MTU on %s interface: %s", l.name, err)
 			return
 		}
-		err = netlink.LinkSetARPOn(l.link)
-		if err != nil {
-			l.errChan <- fmt.Errorf("failed to set ARP on %s interface: %s", l.name, err)
-			return
-		}
-		err = netlink.LinkSetAllmulticastOff(l.link)
-		if err != nil {
-			l.errChan <- fmt.Errorf("failed to set multicast on %s interface: %s", l.name, err)
-			return
-		}
+		/*
+			err = netlink.LinkSetARPOn(l.link)
+			if err != nil {
+				l.errChan <- fmt.Errorf("failed to set ARP on %s interface: %s", l.name, err)
+				return
+			}
+			err = netlink.LinkSetAllmulticastOff(l.link)
+			if err != nil {
+				l.errChan <- fmt.Errorf("failed to set multicast on %s interface: %s", l.name, err)
+				return
+			}
+		*/
 		ipv4Addr := &netlink.Addr{
 			IPNet: &net.IPNet{IP: l.localIPv4, Mask: net.CIDRMask(32, 32)},
 			Peer:  &net.IPNet{IP: l.serverIPv4, Mask: net.CIDRMask(32, 32)},
@@ -283,23 +283,25 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 
 	// set F5 gateway route
 	for _, dst := range l.serverIPs {
-		gws, err := netlink.RouteGet(dst)
+		gws, err := routeGet(dst)
 		if err != nil {
-			l.errChan <- fmt.Errorf("failed to discover the gateway for %s: %s", dst, err)
+			l.errChan <- err
 			return
 		}
 		for _, gw := range gws {
-			route := netlink.Route{
-				Dst:      &net.IPNet{IP: dst, Mask: net.CIDRMask(32, 32)},
-				Priority: 1,
-				Gw:       gw.Gw,
-			}
-			if err = netlink.RouteAdd(&route); err != nil {
-				l.errChan <- fmt.Errorf("failed to set %s route: %s", route.Dst, err)
+			if err = routeAdd(dst, gw, 1, l.name); err != nil {
+				l.errChan <- err
 				return
 			}
-			l.gateways = append(l.gateways, gw.Gw)
+			l.gateways = append(l.gateways, gw)
 		}
+		l.serverRoutesReady = true
+	}
+
+	if runtime.GOOS == "linux" {
+		l.peerGW = l.localIPv4
+	} else {
+		l.peerGW = l.serverIPv4
 	}
 
 	// set custom routes
@@ -308,9 +310,8 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 			log.Printf("Skipping %s subnet", cidr)
 			//continue
 		}
-		route := netlink.Route{LinkIndex: l.link.Attrs().Index, Dst: cidr}
-		if err = netlink.RouteAdd(&route); err != nil {
-			l.errChan <- fmt.Errorf("failed to set %s route on %s interface: %s", cidr.String(), l.name, err)
+		if err = routeAdd(cidr, l.peerGW, 0, l.name); err != nil {
+			l.errChan <- err
 			return
 		}
 	}
@@ -330,31 +331,27 @@ func (l *vpnLink) restoreConfig(config *Config) {
 		}
 	}
 
-	if l.routesReady {
+	if l.serverRoutesReady {
 		// remove F5 gateway route
 		for _, dst := range l.serverIPs {
 			for _, gw := range l.gateways {
-				route := netlink.Route{
-					Dst:      &net.IPNet{IP: dst, Mask: net.CIDRMask(32, 32)},
-					Priority: 1,
-					Gw:       gw,
-				}
-				if err := netlink.RouteDel(&route); err != nil {
-					log.Printf("failed to delete %s route: %s", route.Dst, err)
+				if err := routeDel(dst, gw, 1, l.name); err != nil {
+					log.Print(err)
 				}
 			}
 		}
+	}
 
-		if l.ret == nil && l.link != nil {
+	if l.routesReady {
+		if l.ret == nil {
 			log.Printf("Removing routes from %s interface", l.name)
 			for _, cidr := range config.Routes {
 				if false && cidrContainsIPs(cidr, l.serverIPs) {
 					log.Printf("Skipping %s subnet", cidr)
 					//continue
 				}
-				route := netlink.Route{LinkIndex: l.link.Attrs().Index, Dst: cidr}
-				if err := netlink.RouteDel(&route); err != nil {
-					log.Printf("Failed to delete %s route from %s interface: %s", cidr.String(), l.name, err)
+				if err := routeDel(cidr, l.peerGW, 0, l.name); err != nil {
+					log.Print(err)
 				}
 			}
 		}

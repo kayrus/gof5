@@ -10,7 +10,8 @@ LDFLAGS:=-X $(PKG)/pkg.Version=$(VERSION)
 
 build: fmt vet
 	GOOS=linux go build -mod=vendor -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME) ./cmd
-	#GOOS=darwin go build -mod=vendor -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME)_darwin ./cmd
+	GOOS=freebsd go build -mod=vendor -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME)_freebsd ./cmd
+	GOOS=darwin go build -mod=vendor -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME)_darwin ./cmd
 	#GOOS=windows go build -mod=vendor -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME).exe ./cmd
 
 docker:

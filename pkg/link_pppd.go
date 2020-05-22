@@ -11,7 +11,7 @@ import (
 	"os/exec"
 	"strings"
 
-	//goCIDR "github.com/apparentlymart/go-cidr/cidr"
+	"github.com/hpcloud/tail"
 	"github.com/zaninime/go-hdlc"
 	"golang.org/x/net/ipv4"
 )
@@ -122,6 +122,38 @@ func (l *vpnLink) pppdLogParser(stderr io.Reader) {
 		if strings.Contains(scanner.Text(), "remote IP address") {
 			l.upChan <- true
 		}
+		// freebsd ppp
+		if strings.Contains(scanner.Text(), "IPCP: myaddr") {
+			l.upChan <- true
+		}
 		log.Printf(printGreen, scanner.Text())
+	}
+}
+
+// freebsd ppp log parser
+func (l *vpnLink) pppLogParser() {
+	t, err := tail.TailFile("/var/log/ppp.log", tail.Config{
+		Location: &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd},
+		Follow:   true,
+		Logger:   tail.DiscardingLogger,
+	})
+	if err != nil {
+		l.errChan <- fmt.Errorf("failed to read ppp log: %s", err)
+	}
+	for line := range t.Lines {
+		v := strings.SplitN(line.Text, "]", 2)
+		var str string
+		if len(v) == 2 {
+			str = strings.TrimLeft(v[1], ": ")
+		}
+		if strings.Contains(str, "Using interface") {
+			if v := strings.FieldsFunc(strings.TrimSpace(str), splitFunc); len(v) > 0 {
+				l.nameChan <- v[len(v)-1]
+			}
+		}
+		if strings.Contains(str, "IPCP: myaddr") {
+			l.upChan <- true
+		}
+		log.Printf(printGreen, str)
 	}
 }

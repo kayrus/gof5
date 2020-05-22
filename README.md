@@ -2,8 +2,8 @@
 
 ## Requirements
 
+* pppd is required in MacOS
 * application must be executed as privileged root user
-* Linux only, pull requests to support MacOS are welcome
 
 ## HOWTO
 
@@ -35,6 +35,16 @@ dnsServers:
 routes:
 - 1.2.3.4
 - 1.2.3.5/32
+```
+
+## FreeBSD
+
+`/etc/ppp/ppp.conf` config must contain:
+
+```
+ set log Phase Chat LCP IPCP CCP tun command
+ set timeout 0
+ disable dns
 ```
 
 ## Credits
