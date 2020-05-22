@@ -467,7 +467,7 @@ func Connect(server, username, password string, closeSession, sel bool) error {
 	var cmd *exec.Cmd
 	if config.PPPD {
 		// VPN
-		if favorite.Object.IPv6 {
+		if config.IPv6 && bool(favorite.Object.IPv6) {
 			config.PPPdArgs = append(config.PPPdArgs,
 				"ipv6cp-accept-local",
 				"ipv6cp-accept-remote",

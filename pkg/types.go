@@ -138,6 +138,7 @@ type Config struct {
 	PPPdArgs    []string     `yaml:"pppdArgs"`
 	InsecureTLS bool         `yaml:"insecureTLS"`
 	DTLS        bool         `yaml:"dtls"`
+	IPv6        bool         `yaml:"ipv6"`
 	// list of DNS local servers
 	// when list is empty, parsed from /etc/resolv.conf
 	DNSServers []net.IP `yaml:"-"`

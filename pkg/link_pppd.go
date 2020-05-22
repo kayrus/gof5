@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/hpcloud/tail"
 	"github.com/zaninime/go-hdlc"
@@ -152,6 +153,8 @@ func (l *vpnLink) pppLogParser() {
 			}
 		}
 		if strings.Contains(str, "IPCP: myaddr") {
+			// workaround for race condition "Network is unreachable"
+			time.Sleep(time.Second)
 			l.upChan <- true
 		}
 		log.Printf(printGreen, str)
