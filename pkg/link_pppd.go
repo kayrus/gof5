@@ -57,7 +57,7 @@ func (l *vpnLink) pppdHttpToTun(pppd *os.File) {
 			}
 			if debug {
 				l.decodeHDLC(buf[:rn], "http")
-				//log.Printf("Read %d bytes from http:\n%s", rn, hex.Dump(buf[:rn]))
+				log.Printf("Read %d bytes from http:\n%s", rn, hex.Dump(buf[:rn]))
 			}
 			wn, err := pppd.Write(buf[:rn])
 			if err != nil {
