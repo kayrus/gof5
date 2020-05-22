@@ -152,7 +152,7 @@ type Config struct {
 	// current user or sudo user GID
 	gid int
 	// list of DNS servers, returned by F5
-	vpnServers []net.IP
+	vpnDNSServers []net.IP
 }
 
 type Cookies map[string][]string

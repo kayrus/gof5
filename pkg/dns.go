@@ -50,7 +50,7 @@ func startDns(config *Config, resolvConf []byte) string {
 	}
 
 	log.Printf("Serving DNS proxy on %s:53", listenAddr)
-	log.Printf("Forwarding %q DNS requests to %q", config.DNS, config.vpnServers)
+	log.Printf("Forwarding %q DNS requests to %q", config.DNS, config.vpnDNSServers)
 	log.Printf("Default DNS servers: %q", config.DNSServers)
 
 	dnsUdpHandler := func(w dns.ResponseWriter, m *dns.Msg) {
@@ -85,7 +85,7 @@ func dnsHandler(w dns.ResponseWriter, m *dns.Msg, config *Config, proto string) 
 			if debug {
 				log.Printf("Resolving %q using VPN DNS", m.Question[0].Name)
 			}
-			for _, s := range config.vpnServers {
+			for _, s := range config.vpnDNSServers {
 				if err := handleCustom(w, m, c, s); err == nil {
 					return
 				}

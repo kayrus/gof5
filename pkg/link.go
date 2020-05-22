@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/tls"
 	"encoding/base64"
@@ -8,10 +9,9 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
-	"net/url"
+	"net/http"
 	"os"
 	"runtime"
-	"strings"
 	"sync"
 	"syscall"
 
@@ -33,7 +33,7 @@ type vpnLink struct {
 	serverRoutesReady bool
 	link              netlink.Link
 	iface             *water.Interface
-	conn              myConn //*tls.Conn
+	conn              myConn
 	resolvConf        []byte
 	ret               error
 	errChan           chan error
@@ -60,13 +60,15 @@ type myConn interface {
 // init a TLS connection
 func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink, error) {
 	// TLS
-	//purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&Z=%s&hdlc_framing=%s", server, favorite.Object.SessionID, favorite.Object.UrZ, hdlcFraming))
-	// favorite.Object.IPv6 = false
-	hostname := base64.StdEncoding.EncodeToString([]byte("my-hostname"))
-	purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s", server, favorite.Object.SessionID, hostname, config.PPPD, favorite.Object.IPv4, Bool(config.IPv6 && bool(favorite.Object.IPv6)), favorite.Object.UrZ))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse connection VPN: %s", err)
-	}
+	getUrl := fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s",
+		server,
+		favorite.Object.SessionID,
+		base64.StdEncoding.EncodeToString([]byte("my-hostname")),
+		config.PPPD,
+		favorite.Object.IPv4,
+		Bool(config.IPv6 && bool(favorite.Object.IPv6)),
+		favorite.Object.UrZ,
+	)
 
 	serverIPs, err := net.LookupIP(server)
 	if err != nil || len(serverIPs) == 0 {
@@ -105,47 +107,38 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 			return nil, fmt.Errorf("failed to dial %s:443: %s", server, err)
 		}
 
-		str := fmt.Sprintf("GET %s HTTP/1.0\r\nUser-Agent: %s\r\nHost: %s\r\n\r\n", purl.RequestURI(), userAgentVPN, server)
-		n, err := link.conn.Write([]byte(str))
+		req, err := http.NewRequest("GET", getUrl, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create VPN session request: %s", err)
+		}
+		req.Header.Set("User-Agent", userAgentVPN)
+		err = req.Write(link.conn)
 		if err != nil {
 			return nil, fmt.Errorf("failed to send VPN session request: %s", err)
 		}
 
 		if debug {
-			log.Printf("URL: %s", str)
-			log.Printf("Sent %d bytes", n)
+			log.Printf("URL: %s", getUrl)
 		}
 
-		// TODO: http.ReadResponse()
-		buf := make([]byte, bufferSize)
-		n, err = link.conn.Read(buf)
+		resp, err := http.ReadResponse(bufio.NewReader(link.conn), nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get initial VPN connection response: %s", err)
 		}
+		resp.Body.Close()
 
-		for _, v := range strings.Split(string(buf), "\r\n") {
-			if v := strings.SplitN(v, ":", 2); len(v) == 2 {
-				switch v[0] {
-				case "X-VPN-client-IP":
-					link.localIPv4 = net.ParseIP(strings.TrimSpace(v[1]))
-				case "X-VPN-server-IP":
-					link.serverIPv4 = net.ParseIP(strings.TrimSpace(v[1]))
-				case "X-VPN-client-IPv6":
-					link.localIPv6 = net.ParseIP(strings.TrimSpace(v[1]))
-				case "X-VPN-server-IPv6":
-					link.serverIPv6 = net.ParseIP(strings.TrimSpace(v[1]))
-				}
-			}
-		}
+		link.localIPv4 = net.ParseIP(resp.Header.Get("X-VPN-client-IP"))
+		link.serverIPv4 = net.ParseIP(resp.Header.Get("X-VPN-server-IP"))
+		link.localIPv6 = net.ParseIP(resp.Header.Get("X-VPN-client-IPv6"))
+		link.serverIPv6 = net.ParseIP(resp.Header.Get("X-VPN-server-IPv6"))
 
 		if debug {
-			log.Printf("Data: %s", buf)
-			log.Printf("Received %d bytes", n)
-
 			log.Printf("Client IP: %s", link.localIPv4)
 			log.Printf("Server IP: %s", link.serverIPv4)
-			if favorite.Object.IPv6 {
+			if link.localIPv6 != nil {
 				log.Printf("Client IPv6: %s", link.localIPv6)
+			}
+			if link.localIPv6 != nil {
 				log.Printf("Server IPv6: %s", link.serverIPv6)
 			}
 		}
@@ -212,10 +205,10 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 
 	// define DNS servers, provided by F5
 	log.Printf("Setting %s", resolvPath)
-	config.vpnServers = fav.Object.DNS
+	config.vpnDNSServers = fav.Object.DNS
 	dns := bytes.NewBufferString("# created by gof5 VPN client\n")
 	if len(config.DNS) == 0 {
-		log.Printf("Forwarding DNS requests to %q", config.vpnServers)
+		log.Printf("Forwarding DNS requests to %q", config.vpnDNSServers)
 		for _, v := range fav.Object.DNS {
 			if _, err = dns.WriteString("nameserver " + v.String() + "\n"); err != nil {
 				l.errChan <- fmt.Errorf("failed to write DNS entry into buffer: %s", err)
@@ -228,11 +221,11 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 			l.errChan <- fmt.Errorf("failed to write DNS entry into buffer: %s", err)
 			return
 		}
-		if fav.Object.DNSSuffix != "" {
-			if _, err = dns.WriteString("search " + fav.Object.DNSSuffix + "\n"); err != nil {
-				l.errChan <- fmt.Errorf("failed to write search DNS entry into buffer: %s", err)
-				return
-			}
+	}
+	if fav.Object.DNSSuffix != "" {
+		if _, err = dns.WriteString("search " + fav.Object.DNSSuffix + "\n"); err != nil {
+			l.errChan <- fmt.Errorf("failed to write search DNS entry into buffer: %s", err)
+			return
 		}
 	}
 	if err = ioutil.WriteFile(resolvPath, dns.Bytes(), 0644); err != nil {

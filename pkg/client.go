@@ -450,8 +450,6 @@ func Connect(server, username, password string, closeSession, sel bool) error {
 		return fmt.Errorf("failed to get VPN connection options: %s", err)
 	}
 
-	//log.Printf("Connection options: %+#v", *favorite)
-
 	// save cookies
 	if err := saveCookies(client, u, config); err != nil {
 		return fmt.Errorf("failed to save cookies: %s", err)

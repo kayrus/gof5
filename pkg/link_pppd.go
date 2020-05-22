@@ -18,6 +18,7 @@ import (
 )
 
 // TODO: handle "fatal read pppd: read /dev/ptmx: input/output error"
+// TODO: speed test vs native
 
 func (l *vpnLink) decodeHDLC(buf []byte, src string) {
 	tmp := bytes.NewBuffer(buf)
@@ -126,10 +127,6 @@ func (l *vpnLink) pppdLogParser(stderr io.Reader) {
 			}
 		}
 		if strings.Contains(str, "remote IP address") {
-			l.upChan <- true
-		}
-		// freebsd ppp
-		if strings.Contains(str, "IPCP: myaddr") {
 			l.upChan <- true
 		}
 		log.Printf(printGreen, str)
