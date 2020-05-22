@@ -131,7 +131,7 @@ type Filter struct {
 
 type Config struct {
 	// defaults to true
-	PPPD        Bool         `yaml:"pppd"`
+	PPPD        Bool         `yaml:"-"`
 	ListenDNS   string       `yaml:"listenDNS"`
 	DNS         []string     `yaml:"dns"`
 	Routes      []*net.IPNet `yaml:"-"`
@@ -161,6 +161,7 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type tmp Config
 	var s struct {
 		tmp
+		PPPD       *Bool    `yaml:"pppd"`
 		Routes     []string `yaml:"routes"`
 		DNSServers []string `yaml:"dnsServers"`
 		PPPdArgs   []string `yaml:"pppdArgs"`
@@ -175,6 +176,13 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	*r = Config(s.tmp)
+
+	if s.PPPD == nil {
+		// PPPD is enabled by default
+		r.PPPD = true
+	} else {
+		r.PPPD = *s.PPPD
+	}
 
 	for _, v := range s.Routes {
 		cidr, err := parseCIDR(v)
