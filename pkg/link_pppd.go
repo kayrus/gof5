@@ -115,19 +115,24 @@ func (l *vpnLink) pppdWait(cmd *exec.Cmd) {
 func (l *vpnLink) pppdLogParser(stderr io.Reader) {
 	scanner := bufio.NewScanner(stderr)
 	for scanner.Scan() {
-		if strings.Contains(scanner.Text(), "Using interface") {
-			if v := strings.FieldsFunc(strings.TrimSpace(scanner.Text()), splitFunc); len(v) > 0 {
+		str := scanner.Text()
+		v := strings.SplitN(str, ": ", 2)
+		if len(v) == 2 {
+			str = v[1]
+		}
+		if strings.Contains(str, "Using interface") {
+			if v := strings.FieldsFunc(strings.TrimSpace(str), splitFunc); len(v) > 0 {
 				l.nameChan <- v[len(v)-1]
 			}
 		}
-		if strings.Contains(scanner.Text(), "remote IP address") {
+		if strings.Contains(str, "remote IP address") {
 			l.upChan <- true
 		}
 		// freebsd ppp
-		if strings.Contains(scanner.Text(), "IPCP: myaddr") {
+		if strings.Contains(str, "IPCP: myaddr") {
 			l.upChan <- true
 		}
-		log.Printf(printGreen, scanner.Text())
+		log.Printf(printGreen, str)
 	}
 }
 
@@ -142,10 +147,10 @@ func (l *vpnLink) pppLogParser() {
 		l.errChan <- fmt.Errorf("failed to read ppp log: %s", err)
 	}
 	for line := range t.Lines {
-		v := strings.SplitN(line.Text, "]", 2)
-		var str string
+		str := line.Text
+		v := strings.SplitN(str, ": ", 2)
 		if len(v) == 2 {
-			str = strings.TrimLeft(v[1], ": ")
+			str = v[1]
 		}
 		if strings.Contains(str, "Using interface") {
 			if v := strings.FieldsFunc(strings.TrimSpace(str), splitFunc); len(v) > 0 {

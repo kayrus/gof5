@@ -63,7 +63,7 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 	//purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&Z=%s&hdlc_framing=%s", server, favorite.Object.SessionID, favorite.Object.UrZ, hdlcFraming))
 	// favorite.Object.IPv6 = false
 	hostname := base64.StdEncoding.EncodeToString([]byte("my-hostname"))
-	purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s", server, favorite.Object.SessionID, hostname, config.PPPD, favorite.Object.IPv4, favorite.Object.IPv6, favorite.Object.UrZ))
+	purl, err := url.Parse(fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s", server, favorite.Object.SessionID, hostname, config.PPPD, favorite.Object.IPv4, Bool(config.IPv6 && bool(favorite.Object.IPv6)), favorite.Object.UrZ))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse connection VPN: %s", err)
 	}

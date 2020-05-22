@@ -20,6 +20,7 @@ A `~/.gof5/config.yaml` file must exist with contents like:
 
 ```yaml
 # when true, a pppd client will be used
+# pppd is required on MacOS
 pppd: false
 # a list of DNS zones to be resolved by VPN DNS servers
 # when empty, every DNS query will be resolved by VPN DNS servers
