@@ -480,13 +480,14 @@ func toF5(conn myConn, buf []byte) error {
 		dst = conn
 	}
 
-	// TODO: figure out whether each Write creates an independent TCP packet
-	// probably buffer is not a bad idea
+	// TODO: move buffer initialization into tunToHttp
+	// probably a buffered pipe would be nicer
 	length := len(buf)
 	if length == 0 {
 		return fmt.Errorf("cannot encapsulate zero packet")
 	}
 
+	// TODO: check packet header length (ipv4.HeaderLen, ipv6.HeaderLen)
 	switch buf[0] >> 4 {
 	case ipv4.Version:
 		length += len(ipv4header)

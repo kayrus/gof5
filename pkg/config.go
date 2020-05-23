@@ -122,15 +122,13 @@ func readConfig() (*Config, error) {
 		}
 	}
 
-	// read config file
-	raw, err := ioutil.ReadFile(path.Join(configPath, configName))
-	if err != nil {
-		return nil, fmt.Errorf("cannot read %s config: %s", configName, err)
-	}
-
 	var config Config
-	if err = yaml.Unmarshal(raw, &config); err != nil {
-		return nil, fmt.Errorf("cannot parse %s file: %v", configName, err)
+	// read config file
+	// if config doesn't exist, use defaults
+	if raw, err := ioutil.ReadFile(path.Join(configPath, configName)); err == nil {
+		if err = yaml.Unmarshal(raw, &config); err != nil {
+			return nil, fmt.Errorf("cannot parse %s file: %v", configName, err)
+		}
 	}
 
 	config.path = configPath

@@ -60,7 +60,7 @@ type myConn interface {
 type myTun struct {
 	tun.Device
 	myConn
-	readBuf []byte
+	readBuf  []byte
 	writeBuf []byte
 }
 

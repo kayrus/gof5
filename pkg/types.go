@@ -179,7 +179,7 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	*r = Config(s.tmp)
 
 	if s.PPPD == nil {
-		// PPPD is disable by default
+		// PPPD is disabled by default
 		r.PPPD = false
 	} else {
 		r.PPPD = *s.PPPD
