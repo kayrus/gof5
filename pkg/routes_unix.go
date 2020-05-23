@@ -35,7 +35,6 @@ func routeGet(dst net.IP) ([]net.IP, error) {
 }
 
 func routeAdd(dst interface{}, gw net.IP, priority int, iface string) error {
-	// TODO: handle "Network is unreachable"
 	args := []string{
 		"-n",
 		"add",
