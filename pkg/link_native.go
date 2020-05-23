@@ -471,6 +471,15 @@ func (l *vpnLink) httpToTun() {
 }
 
 func toF5(conn myConn, buf []byte) error {
+	var dst io.ReadWriter
+	buffer := true
+
+	if buffer {
+		dst = &bytes.Buffer{}
+	} else {
+		dst = conn
+	}
+
 	// TODO: figure out whether each Write creates an independent TCP packet
 	// probably buffer is not a bad idea
 	length := len(buf)
@@ -478,30 +487,27 @@ func toF5(conn myConn, buf []byte) error {
 		return fmt.Errorf("cannot encapsulate zero packet")
 	}
 
-	switch buf[0] {
-	case 0x45, 0x46:
+	switch buf[0] >> 4 {
+	case ipv4.Version:
 		length += len(ipv4header)
-	case 0x60:
+	case ipv6.Version:
 		length += len(ipv6header)
 	}
 
-	_, err := conn.Write([]byte{0xf5, 0x00})
+	_, err := dst.Write([]byte{0xf5, 0x00})
 	if err != nil {
 		return fmt.Errorf("failed to write F5 header: %s", err)
 	}
-	err = binary.Write(conn, binary.BigEndian, uint16(length))
+	err = binary.Write(dst, binary.BigEndian, uint16(length))
 	if err != nil {
 		return fmt.Errorf("failed to write F5 header size: %s", err)
 	}
 
-	switch buf[0] {
-	case 0x45:
-		_, err = conn.Write(ipv4header)
-	case 0x46:
-		// deal with the "Protocol reject: 46 c0"
-		_, err = conn.Write(ipv4header)
-	case 0x60:
-		_, err = conn.Write(ipv6header)
+	switch buf[0] >> 4 {
+	case ipv4.Version:
+		_, err = dst.Write(ipv4header)
+	case ipv6.Version:
+		_, err = dst.Write(ipv6header)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to write IP header: %s", err)
@@ -511,12 +517,26 @@ func toF5(conn myConn, buf []byte) error {
 		log.Printf("Sending from pppd:\n%s", hex.Dump(buf))
 	}
 
-	wn, err := conn.Write(buf)
-	if err != nil {
-		return fmt.Errorf("fatal write to http: %s", err)
-	}
-	if debug {
-		log.Printf("Sent %d bytes to http", wn)
+	if buffer {
+		_, err = dst.Write(buf)
+		if err != nil {
+			return fmt.Errorf("fatal write to http: %s", err)
+		}
+		wn, err := io.Copy(conn, dst)
+		if err != nil {
+			return fmt.Errorf("fatal write to http: %s", err)
+		}
+		if debug {
+			log.Printf("Sent %d bytes to http", wn)
+		}
+	} else {
+		wn, err := dst.Write(buf)
+		if err != nil {
+			return fmt.Errorf("fatal write to http: %s", err)
+		}
+		if debug {
+			log.Printf("Sent %d bytes to http", wn)
+		}
 	}
 
 	return nil
@@ -543,7 +563,7 @@ func (l *vpnLink) tunToHttp() {
 			}
 			if debug {
 				log.Printf("Read %d bytes from tun:\n%s", rn, hex.Dump(buf[:rn]))
-				header, _ := ipv4.ParseHeader(buf)
+				header, _ := ipv4.ParseHeader(buf[:rn])
 				log.Printf("ipv4 from tun: %s", header)
 			}
 
