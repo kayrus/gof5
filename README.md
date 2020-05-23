@@ -2,7 +2,6 @@
 
 ## Requirements
 
-* pppd is required in MacOS
 * application must be executed as privileged root user
 
 ## HOWTO
@@ -20,7 +19,6 @@ A `~/.gof5/config.yaml` file must exist with contents like:
 
 ```yaml
 # when true, a pppd client will be used
-# pppd is required on MacOS
 pppd: false
 # a list of DNS zones to be resolved by VPN DNS servers
 # when empty, every DNS query will be resolved by VPN DNS servers
@@ -36,16 +34,6 @@ dnsServers:
 routes:
 - 1.2.3.4
 - 1.2.3.5/32
-```
-
-## FreeBSD
-
-`/etc/ppp/ppp.conf` config must contain:
-
-```
- set log Phase Chat LCP IPCP CCP tun command
- set timeout 0
- disable dns
 ```
 
 ## Credits

@@ -10,6 +10,22 @@ import (
 	"github.com/jackpal/gateway"
 )
 
+func setInterface(l *vpnLink) error {
+	v, err := exec.Command("ifconfig", l.name, "mtu", fmt.Sprintf("%d", l.mtuInt)).Output()
+	if err != nil {
+		return fmt.Errorf("failed to set MTU: %s: %s", v, err)
+	}
+	v, err = exec.Command("ifconfig", l.name, "inet", getNet(l.localIPv4).String(), l.serverIPv4.String()).Output()
+	if err != nil {
+		return fmt.Errorf("failed to set ip addr: %s: %s", v, err)
+	}
+	v, err = exec.Command("ifconfig", l.name, "up").Output()
+	if err != nil {
+		return fmt.Errorf("failed to bring up interface: %s: %s", v, err)
+	}
+	return nil
+}
+
 func routeGet(dst net.IP) ([]net.IP, error) {
 	v, err := gateway.DiscoverGateway()
 	if err != nil {

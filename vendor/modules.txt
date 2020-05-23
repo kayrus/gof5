@@ -63,6 +63,7 @@ github.com/vishvananda/netns
 ## explicit
 github.com/zaninime/go-hdlc
 # golang.org/x/crypto v0.0.0-20200323165209-0ec3e9974c59
+golang.org/x/crypto/blake2s
 golang.org/x/crypto/cryptobyte
 golang.org/x/crypto/cryptobyte/asn1
 golang.org/x/crypto/curve25519
@@ -77,12 +78,26 @@ golang.org/x/net/internal/socket
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
 # golang.org/x/sys v0.0.0-20200323222414-85ca7c5b95cd
+golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
+# golang.org/x/text v0.3.2
+golang.org/x/text/transform
+golang.org/x/text/unicode/norm
 # golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
+# golang.zx2c4.com/wireguard v0.0.20200320
+## explicit
+golang.zx2c4.com/wireguard/rwcancel
+golang.zx2c4.com/wireguard/tun
+golang.zx2c4.com/wireguard/tun/wintun
+golang.zx2c4.com/wireguard/tun/wintun/iphlpapi
+golang.zx2c4.com/wireguard/tun/wintun/namespaceapi
+golang.zx2c4.com/wireguard/tun/wintun/nci
+golang.zx2c4.com/wireguard/tun/wintun/registry
+golang.zx2c4.com/wireguard/tun/wintun/setupapi
 # gopkg.in/fsnotify.v1 v1.4.7
 ## explicit
 gopkg.in/fsnotify.v1

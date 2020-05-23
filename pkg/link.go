@@ -18,11 +18,13 @@ import (
 	"github.com/pion/dtls/v2"
 	"github.com/songgao/water"
 	"github.com/vishvananda/netlink"
+	"golang.zx2c4.com/wireguard/tun"
 )
 
 const (
 	printGreen = "\033[1;32m%s\033[0m"
 	bufferSize = 1500
+	defaultMTU = 1420
 )
 
 type vpnLink struct {
@@ -31,7 +33,7 @@ type vpnLink struct {
 	routesReady       bool
 	serverRoutesReady bool
 	link              netlink.Link
-	iface             *water.Interface
+	iface             myTun
 	conn              myConn
 	resolvConf        []byte
 	ret               error
@@ -55,6 +57,38 @@ type myConn interface {
 	Close() error
 }
 
+type myTun struct {
+	tun.Device
+	myConn
+	readBuf []byte
+	writeBuf []byte
+}
+
+func (t *myTun) Read(b []byte) (int, error) {
+	if t.Device != nil {
+		// unix.IFF_NO_PI is not set, therefore we receive packet information
+		n, err := t.Device.File().Read(b)
+		if n < 4 {
+			return 0, err
+		}
+		// TODO: better shift
+		// probably something like
+		// https://github.com/songgao/water/blob/2b4b6d7c09d80835e5f13f6b040d69f00a158b24/syscalls_darwin.go#L224
+		for i := 0; i < n-4; i++ {
+			b[i] = b[i+4]
+		}
+		return n - 4, nil
+	}
+	return t.myConn.Read(b)
+}
+
+func (t *myTun) Write(b []byte) (int, error) {
+	if t.Device != nil {
+		return t.Device.Write(append(make([]byte, 4), b...), 4)
+	}
+	return t.myConn.Write(b)
+}
+
 // init a TLS connection
 func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink, error) {
 	// TLS
@@ -62,7 +96,7 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 		server,
 		favorite.Object.SessionID,
 		base64.StdEncoding.EncodeToString([]byte("my-hostname")),
-		config.PPPD,
+		Bool(config.PPPD),
 		favorite.Object.IPv4,
 		Bool(config.IPv6 && bool(favorite.Object.IPv6)),
 		favorite.Object.UrZ,
@@ -143,14 +177,32 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 	}
 
 	if !config.PPPD {
-		link.iface, err = water.New(water.Config{
-			DeviceType: water.TUN,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create a %q interface: %s", water.TUN, err)
-		}
+		if config.Water {
+			log.Printf("Using water module to create tunnel")
+			device, err := water.New(water.Config{
+				DeviceType: water.TUN,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to create a %q interface: %s", water.TUN, err)
+			}
 
-		log.Printf("Created %s interface", link.iface.Name())
+			link.name = device.Name()
+			log.Printf("Created %s interface", link.name)
+			link.iface = myTun{myConn: device}
+		} else {
+			log.Printf("Using wireguard module to create tunnel")
+			device, err := tun.CreateTUN("tun0", defaultMTU)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create an interface: %s", err)
+			}
+
+			link.name, err = device.Name()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get an interface name: %s", err)
+			}
+			log.Printf("Created %s interface", link.name)
+			link.iface = myTun{Device: device}
+		}
 	}
 
 	return link, nil
@@ -234,40 +286,8 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 	// set routes
 	log.Printf("Setting routes on %s interface", l.name)
 	if !config.PPPD {
-		l.link, err = netlink.LinkByName(l.name)
-		if err != nil {
-			l.errChan <- fmt.Errorf("failed to detect %s interface: %s", l.name, err)
-			return
-		}
-		err = netlink.LinkSetMTU(l.link, int(l.mtuInt))
-		if err != nil {
-			l.errChan <- fmt.Errorf("failed to set MTU on %s interface: %s", l.name, err)
-			return
-		}
-		/*
-			err = netlink.LinkSetARPOn(l.link)
-			if err != nil {
-				l.errChan <- fmt.Errorf("failed to set ARP on %s interface: %s", l.name, err)
-				return
-			}
-			err = netlink.LinkSetAllmulticastOff(l.link)
-			if err != nil {
-				l.errChan <- fmt.Errorf("failed to set multicast on %s interface: %s", l.name, err)
-				return
-			}
-		*/
-		ipv4Addr := &netlink.Addr{
-			IPNet: &net.IPNet{IP: l.localIPv4, Mask: net.CIDRMask(32, 32)},
-			Peer:  &net.IPNet{IP: l.serverIPv4, Mask: net.CIDRMask(32, 32)},
-		}
-		err = netlink.AddrAdd(l.link, ipv4Addr)
-		if err != nil {
-			l.errChan <- fmt.Errorf("failed to set peer address on %s interface: %s", l.name, err)
-			return
-		}
-		err = netlink.LinkSetUp(l.link)
-		if err != nil {
-			l.errChan <- fmt.Errorf("failed to set %s interface up: %s", l.name, err)
+		if err := setInterface(l); err != nil {
+			l.errChan <- err
 			return
 		}
 	}
@@ -308,6 +328,12 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 func (l *vpnLink) restoreConfig(config *Config) {
 	l.Lock()
 	defer l.Unlock()
+
+	defer func() {
+		if l.iface.Device != nil {
+			l.iface.Device.Close()
+		}
+	}()
 
 	if l.resolvConf != nil {
 		log.Printf("Restoring original %s", resolvPath)

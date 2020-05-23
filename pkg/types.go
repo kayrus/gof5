@@ -131,7 +131,7 @@ type Filter struct {
 
 type Config struct {
 	// defaults to true
-	PPPD        Bool         `yaml:"-"`
+	PPPD        bool         `yaml:"-"`
 	ListenDNS   string       `yaml:"listenDNS"`
 	DNS         []string     `yaml:"dns"`
 	Routes      []*net.IPNet `yaml:"-"`
@@ -139,6 +139,7 @@ type Config struct {
 	InsecureTLS bool         `yaml:"insecureTLS"`
 	DTLS        bool         `yaml:"dtls"`
 	IPv6        bool         `yaml:"ipv6"`
+	Water       bool         `yaml:"water"`
 	// list of DNS local servers
 	// when list is empty, parsed from /etc/resolv.conf
 	DNSServers []net.IP `yaml:"-"`
@@ -161,7 +162,7 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type tmp Config
 	var s struct {
 		tmp
-		PPPD       *Bool    `yaml:"pppd"`
+		PPPD       *bool    `yaml:"pppd"`
 		Routes     []string `yaml:"routes"`
 		DNSServers []string `yaml:"dnsServers"`
 		PPPdArgs   []string `yaml:"pppdArgs"`
@@ -178,8 +179,8 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	*r = Config(s.tmp)
 
 	if s.PPPD == nil {
-		// PPPD is enabled by default
-		r.PPPD = true
+		// PPPD is disable by default
+		r.PPPD = false
 	} else {
 		r.PPPD = *s.PPPD
 	}

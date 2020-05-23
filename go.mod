@@ -12,6 +12,7 @@ require (
 	github.com/vishvananda/netlink v1.1.0
 	github.com/zaninime/go-hdlc v1.1.1
 	golang.org/x/net v0.0.0-20200324143707-d3edc9973b7e
+	golang.zx2c4.com/wireguard v0.0.20200320
 	gopkg.in/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v2 v2.2.8

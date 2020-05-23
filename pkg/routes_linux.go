@@ -9,6 +9,43 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
+func setInterface(l *vpnLink) error {
+	var err error
+	l.link, err = netlink.LinkByName(l.name)
+	if err != nil {
+		return fmt.Errorf("failed to detect %s interface: %s", l.name, err)
+	}
+	err = netlink.LinkSetMTU(l.link, int(l.mtuInt))
+	if err != nil {
+		return fmt.Errorf("failed to set MTU on %s interface: %s", l.name, err)
+	}
+	/*
+		err = netlink.LinkSetARPOn(l.link)
+		if err != nil {
+			l.errChan <- fmt.Errorf("failed to set ARP on %s interface: %s", l.name, err)
+			return
+		}
+		err = netlink.LinkSetAllmulticastOff(l.link)
+		if err != nil {
+			l.errChan <- fmt.Errorf("failed to set multicast on %s interface: %s", l.name, err)
+			return
+		}
+	*/
+	ipv4Addr := &netlink.Addr{
+		IPNet: getNet(l.localIPv4),
+		Peer:  getNet(l.serverIPv4),
+	}
+	err = netlink.AddrAdd(l.link, ipv4Addr)
+	if err != nil {
+		return fmt.Errorf("failed to set peer address on %s interface: %s", l.name, err)
+	}
+	err = netlink.LinkSetUp(l.link)
+	if err != nil {
+		return fmt.Errorf("failed to set %s interface up: %s", l.name, err)
+	}
+	return nil
+}
+
 func routeGet(dst net.IP) ([]net.IP, error) {
 	v, err := netlink.RouteGet(dst)
 	if err != nil {

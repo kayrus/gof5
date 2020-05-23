@@ -154,7 +154,7 @@ func processPPP(link *vpnLink, buf []byte) error {
 					log.Printf("id: %d, id2: %d, Local IPv4 acknowledged: %s", id, id2, link.localIPv4)
 
 					// connection established
-					link.nameChan <- link.iface.Name()
+					link.nameChan <- link.name
 					link.upChan <- true
 
 					return nil
