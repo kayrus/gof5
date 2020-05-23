@@ -117,8 +117,7 @@ func (l *vpnLink) pppdLogParser(stderr io.Reader) {
 	scanner := bufio.NewScanner(stderr)
 	for scanner.Scan() {
 		str := scanner.Text()
-		v := strings.SplitN(str, ": ", 2)
-		if len(v) == 2 {
+		if v := strings.SplitN(str, ": ", 2); len(v) == 2 {
 			str = v[1]
 		}
 		if strings.Contains(str, "Using interface") {
@@ -134,6 +133,7 @@ func (l *vpnLink) pppdLogParser(stderr io.Reader) {
 }
 
 // freebsd ppp log parser
+// TODO: talk directly via pppctl
 func (l *vpnLink) pppLogParser() {
 	t, err := tail.TailFile("/var/log/ppp.log", tail.Config{
 		Location: &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd},
@@ -145,8 +145,7 @@ func (l *vpnLink) pppLogParser() {
 	}
 	for line := range t.Lines {
 		str := line.Text
-		v := strings.SplitN(str, ": ", 2)
-		if len(v) == 2 {
+		if v := strings.SplitN(str, ": ", 2); len(v) == 2 {
 			str = v[1]
 		}
 		if strings.Contains(str, "Using interface") {

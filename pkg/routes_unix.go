@@ -20,7 +20,18 @@ func routeGet(dst net.IP) ([]net.IP, error) {
 
 func routeAdd(dst interface{}, gw net.IP, priority int, iface string) error {
 	// TODO: handle "Network is unreachable"
-	v, err := exec.Command("route", "-n", "add", "-net", getNet(dst).String(), gw.String()).Output()
+	args := []string{
+		"-n",
+		"add",
+		"-net",
+		getNet(dst).String(),
+	}
+	if gw == nil {
+		args = append(args, "-interface", iface)
+	} else {
+		args = append(args, gw.String())
+	}
+	v, err := exec.Command("route", args...).Output()
 	if err != nil {
 		return fmt.Errorf("failed to add %s route to %s interface: %s: %s", dst, iface, v, err)
 	}
@@ -28,7 +39,18 @@ func routeAdd(dst interface{}, gw net.IP, priority int, iface string) error {
 }
 
 func routeDel(dst interface{}, gw net.IP, priority int, iface string) error {
-	v, err := exec.Command("route", "-n", "del", "-net", getNet(dst).String(), gw.String()).Output()
+	args := []string{
+		"-n",
+		"del",
+		"-net",
+		getNet(dst).String(),
+	}
+	if gw == nil {
+		args = append(args, "-interface", iface)
+	} else {
+		args = append(args, gw.String())
+	}
+	v, err := exec.Command("route", args...).Output()
 	if err != nil {
 		return fmt.Errorf("failed to delete %s route from %s interface: %s: %s", dst, iface, v, err)
 	}

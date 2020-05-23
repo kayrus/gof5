@@ -27,8 +27,15 @@ func routeAdd(dst interface{}, gw net.IP, priority int, iface string) error {
 		Priority: priority,
 		Gw:       gw,
 	}
+	if gw == nil {
+		link, err := netlink.LinkByName(iface)
+		if err != nil {
+			return fmt.Errorf("failed to get %q interface by name: %s", iface, err)
+		}
+		route.LinkIndex = link.Attrs().Index
+	}
 	if err := netlink.RouteAdd(&route); err != nil {
-		return fmt.Errorf("failed to add %s route to %s interface: %s", dst, iface, err)
+		return fmt.Errorf("failed to add %s route to %q interface: %s", dst, iface, err)
 	}
 	return nil
 }
@@ -39,8 +46,15 @@ func routeDel(dst interface{}, gw net.IP, priority int, iface string) error {
 		Priority: priority,
 		Gw:       gw,
 	}
+	if gw == nil {
+		link, err := netlink.LinkByName(iface)
+		if err != nil {
+			return fmt.Errorf("failed to get %q interface by name: %s", iface, err)
+		}
+		route.LinkIndex = link.Attrs().Index
+	}
 	if err := netlink.RouteDel(&route); err != nil {
-		return fmt.Errorf("failed to delete %s route from %s interface: %s", dst, iface, err)
+		return fmt.Errorf("failed to delete %s route from %q interface: %s", dst, iface, err)
 	}
 	return nil
 }

@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"runtime"
 	"sync"
 	"syscall"
 
@@ -48,7 +47,6 @@ type vpnLink struct {
 	mtu               []byte
 	mtuInt            uint16
 	gateways          []net.IP
-	peerGW            net.IP
 }
 
 type myConn interface {
@@ -291,19 +289,13 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 		l.serverRoutesReady = true
 	}
 
-	if runtime.GOOS == "linux" {
-		l.peerGW = l.localIPv4
-	} else {
-		l.peerGW = l.serverIPv4
-	}
-
 	// set custom routes
 	for _, cidr := range config.Routes {
 		if false && cidrContainsIPs(cidr, l.serverIPs) {
 			log.Printf("Skipping %s subnet", cidr)
 			//continue
 		}
-		if err = routeAdd(cidr, l.peerGW, 0, l.name); err != nil {
+		if err = routeAdd(cidr, nil, 0, l.name); err != nil {
 			l.errChan <- err
 			return
 		}
@@ -343,7 +335,7 @@ func (l *vpnLink) restoreConfig(config *Config) {
 					log.Printf("Skipping %s subnet", cidr)
 					//continue
 				}
-				if err := routeDel(cidr, l.peerGW, 0, l.name); err != nil {
+				if err := routeDel(cidr, nil, 0, l.name); err != nil {
 					log.Print(err)
 				}
 			}
