@@ -338,6 +338,9 @@ func (l *vpnLink) restoreConfig(config *Config) {
 		if l.iface.Device != nil {
 			l.iface.Device.Close()
 		}
+		if l.iface.myConn != nil {
+			l.iface.myConn.Close()
+		}
 	}()
 
 	if l.resolvConf != nil {
