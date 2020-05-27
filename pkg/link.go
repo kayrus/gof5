@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"runtime"
 	"sync"
 	"syscall"
 
@@ -192,11 +191,7 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 			link.iface = myTun{myConn: device}
 		} else {
 			log.Printf("Using wireguard module to create tunnel")
-			ifname := "tun0"
-			if runtime.GOOS == "darwin" {
-				ifname = "utun0"
-			}
-			device, err := tun.CreateTUN(ifname, defaultMTU)
+			device, err := tun.CreateTUN("", defaultMTU)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create an interface: %s", err)
 			}
