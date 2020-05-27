@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"sync"
 	"syscall"
 
@@ -191,7 +192,11 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 			link.iface = myTun{myConn: device}
 		} else {
 			log.Printf("Using wireguard module to create tunnel")
-			device, err := tun.CreateTUN("tun0", defaultMTU)
+			ifname := "tun0"
+			if runtime.GOOS == "darwin" {
+				ifname = "utun0"
+			}
+			device, err := tun.CreateTUN(ifname, defaultMTU)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create an interface: %s", err)
 			}
@@ -266,7 +271,7 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 			}
 		}
 	} else {
-		listenAddr := startDns(config, l.resolvConf)
+		listenAddr := startDns(l, config)
 		if _, err = dns.WriteString("nameserver " + listenAddr + "\n"); err != nil {
 			l.errChan <- fmt.Errorf("failed to write DNS entry into buffer: %s", err)
 			return

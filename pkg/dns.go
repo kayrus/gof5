@@ -39,9 +39,9 @@ func parseResolvConf(config *Config, resolvConf []byte) {
 	}
 }
 
-func startDns(config *Config, resolvConf []byte) string {
+func startDns(l *vpnLink, config *Config) string {
 	if len(config.DNSServers) == 0 {
-		parseResolvConf(config, resolvConf)
+		parseResolvConf(config, l.resolvConf)
 	}
 
 	listenAddr := defaultListenAddr
@@ -64,13 +64,15 @@ func startDns(config *Config, resolvConf []byte) string {
 	go func() {
 		srv := &dns.Server{Addr: listenAddr + ":53", Net: "udp", Handler: dns.HandlerFunc(dnsUdpHandler)}
 		if err := srv.ListenAndServe(); err != nil {
-			log.Fatalf("Failed to set udp listener %s", err)
+			l.errChan <- fmt.Errorf("failed to set udp listener %s", err)
+			return
 		}
 	}()
 	go func() {
 		srv := &dns.Server{Addr: listenAddr + ":53", Net: "tcp", Handler: dns.HandlerFunc(dnsTcpHandler)}
 		if err := srv.ListenAndServe(); err != nil {
-			log.Fatalf("Failed to set tcp listener %s", err)
+			l.errChan <- fmt.Errorf("failed to set tcp listener %s", err)
+			return
 		}
 	}()
 
