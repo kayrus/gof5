@@ -184,11 +184,11 @@ func loginSignature(c *http.Client, server string, _, _ *string) error {
 
 func login(c *http.Client, server string, username, password *string) error {
 	if *username == "" {
-		fmt.Print("Username: ")
+		fmt.Print("Enter VPN username: ")
 		fmt.Scanln(username)
 	}
 	if *password == "" {
-		fmt.Print("Password: ")
+		fmt.Print("Enter VPN password: ")
 		v, err := gopass.GetPasswd()
 		if err != nil {
 			return fmt.Errorf("failed to read password: %s", err)
