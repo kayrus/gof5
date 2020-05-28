@@ -2,11 +2,9 @@ package pkg
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -35,7 +33,6 @@ type vpnLink struct {
 	link              netlink.Link
 	iface             myTun
 	conn              myConn
-	resolvConf        []byte
 	ret               error
 	errChan           chan error
 	upChan            chan bool
@@ -90,16 +87,16 @@ func (t *myTun) Write(b []byte) (int, error) {
 }
 
 // init a TLS connection
-func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink, error) {
+func initConnection(server string, config *Config) (*vpnLink, error) {
 	// TLS
 	getUrl := fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s",
 		server,
-		favorite.Object.SessionID,
+		config.f5Config.Object.SessionID,
 		base64.StdEncoding.EncodeToString([]byte("my-hostname")),
 		Bool(config.PPPD),
-		favorite.Object.IPv4,
-		Bool(config.IPv6 && bool(favorite.Object.IPv6)),
-		favorite.Object.UrZ,
+		config.f5Config.Object.IPv4,
+		Bool(config.IPv6 && bool(config.f5Config.Object.IPv6)),
+		config.f5Config.Object.UrZ,
 	)
 
 	serverIPs, err := net.LookupIP(server)
@@ -116,8 +113,8 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 		termChan:  make(chan os.Signal, 1),
 	}
 
-	if config.DTLS && favorite.Object.TunnelDTLS {
-		s := fmt.Sprintf("%s:%s", server, favorite.Object.TunnelPortDTLS)
+	if config.DTLS && config.f5Config.Object.TunnelDTLS {
+		s := fmt.Sprintf("%s:%s", server, config.f5Config.Object.TunnelPortDTLS)
 		log.Printf("Connecting to %s using DTLS", s)
 		addr, err := net.ResolveUDPAddr("udp", s)
 		if err != nil {
@@ -128,7 +125,7 @@ func initConnection(server string, config *Config, favorite *Favorite) (*vpnLink
 		}
 		link.conn, err = dtls.Dial("udp4", addr, conf)
 		if err != nil {
-			return nil, fmt.Errorf("failed to dial %s:%s: %s", server, favorite.Object.TunnelPortDTLS, err)
+			return nil, fmt.Errorf("failed to dial %s:%s: %s", server, config.f5Config.Object.TunnelPortDTLS, err)
 		}
 	} else {
 		conf := &tls.Config{
@@ -226,7 +223,7 @@ func cidrContainsIPs(cidr *net.IPNet, ips []net.IP) bool {
 }
 
 // wait for pppd and config DNS and routes
-func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
+func (l *vpnLink) waitAndConfig(config *Config) {
 	var err error
 	// wait for tun name
 	l.name = <-l.nameChan
@@ -245,43 +242,14 @@ func (l *vpnLink) waitAndConfig(config *Config, fav *Favorite) {
 
 	l.Lock()
 	defer l.Unlock()
-	// read current resolv.conf
-	// reading it here in order to avoid conflicts, when the second VPN connection is established in parallel
-	l.resolvConf, err = ioutil.ReadFile(resolvPath)
-	if err != nil {
-		l.errChan <- fmt.Errorf("cannot read %s: %s", resolvPath, err)
-		return
-	}
 
 	// define DNS servers, provided by F5
 	log.Printf("Setting %s", resolvPath)
-	config.vpnDNSServers = fav.Object.DNS
-	dns := bytes.NewBufferString("# created by gof5 VPN client\n")
-	if len(config.DNS) == 0 {
-		log.Printf("Forwarding DNS requests to %q", config.vpnDNSServers)
-		for _, v := range fav.Object.DNS {
-			if _, err = dns.WriteString("nameserver " + v.String() + "\n"); err != nil {
-				l.errChan <- fmt.Errorf("failed to write DNS entry into buffer: %s", err)
-				return
-			}
-		}
-	} else {
-		listenAddr := startDns(l, config)
-		if _, err = dns.WriteString("nameserver " + listenAddr + "\n"); err != nil {
-			l.errChan <- fmt.Errorf("failed to write DNS entry into buffer: %s", err)
-			return
-		}
+	if err = configureDNS(config); err != nil {
+		l.errChan <- err
 	}
-	if fav.Object.DNSSuffix != "" {
-		if _, err = dns.WriteString("search " + fav.Object.DNSSuffix + "\n"); err != nil {
-			l.errChan <- fmt.Errorf("failed to write search DNS entry into buffer: %s", err)
-			return
-		}
-	}
-	if err = ioutil.WriteFile(resolvPath, dns.Bytes(), 0644); err != nil {
-		l.errChan <- fmt.Errorf("failed to write %s: %s", resolvPath, err)
-		return
-	}
+
+	startDns(l, config)
 
 	// set routes
 	log.Printf("Setting routes on %s interface", l.name)
@@ -338,12 +306,7 @@ func (l *vpnLink) restoreConfig(config *Config) {
 		}
 	}()
 
-	if l.resolvConf != nil {
-		log.Printf("Restoring original %s", resolvPath)
-		if err := ioutil.WriteFile(resolvPath, l.resolvConf, 0644); err != nil {
-			log.Printf("Failed to restore %s: %s", resolvPath, err)
-		}
-	}
+	deConfigureDNS(config)
 
 	if l.serverRoutesReady {
 		// remove F5 gateway route

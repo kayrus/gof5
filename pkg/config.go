@@ -1,9 +1,12 @@
 package pkg
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,6 +23,10 @@ const (
 	configDir   = ".gof5"
 	configName  = "config.yaml"
 	cookiesName = "cookies.yaml"
+)
+
+var (
+	defaultDNSListenAddr = net.ParseIP("127.0.0.1")
 )
 
 func parseCookies(config *Config) Cookies {
@@ -77,6 +84,30 @@ func saveCookies(c *http.Client, u *url.URL, config *Config) error {
 	return nil
 }
 
+func parseResolvConf(config *Config) {
+	buf := bufio.NewReader(bytes.NewReader(config.resolvConf))
+	for line, isPrefix, err := buf.ReadLine(); err == nil && isPrefix == false; line, isPrefix, err = buf.ReadLine() {
+		if len(line) > 0 && (line[0] == ';' || line[0] == '#') {
+			continue
+		}
+
+		f := strings.FieldsFunc(string(line), splitFunc)
+		if len(f) < 1 {
+			continue
+		}
+		switch f[0] {
+		case "nameserver":
+			if len(f) > 1 && len(config.DNSServers) < 3 {
+				if v := net.ParseIP(f[1]); v.To4() != nil {
+					config.DNSServers = append(config.DNSServers, v)
+				} else if v.To16() != nil {
+					config.DNSServers = append(config.DNSServers, v)
+				}
+			}
+		}
+	}
+}
+
 func readConfig() (*Config, error) {
 	var err error
 	var usr *user.User
@@ -129,6 +160,20 @@ func readConfig() (*Config, error) {
 		if err = yaml.Unmarshal(raw, &config); err != nil {
 			return nil, fmt.Errorf("cannot parse %s file: %v", configName, err)
 		}
+	}
+
+	// read current resolv.conf
+	config.resolvConf, err = ioutil.ReadFile(resolvPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read %s: %s", resolvPath, err)
+	}
+
+	if len(config.DNSServers) == 0 {
+		parseResolvConf(&config)
+	}
+
+	if config.ListenDNS == nil {
+		config.ListenDNS = defaultDNSListenAddr
 	}
 
 	config.path = configPath

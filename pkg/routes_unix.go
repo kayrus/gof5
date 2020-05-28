@@ -10,6 +10,15 @@ import (
 	"github.com/jackpal/gateway"
 )
 
+/*
+func setDNS(l *vpnLink( error {
+        v, err := exec.Command("networksetup", "-setdnsservers" "Wi-Fi", l.).Output()
+        if err != nil {
+                return fmt.Errorf("failed to set MTU: %s: %s", v, err)
+        }
+}
+*/
+
 func setInterface(l *vpnLink) error {
 	v, err := exec.Command("ifconfig", l.name, "mtu", fmt.Sprintf("%d", l.mtuInt)).Output()
 	if err != nil {

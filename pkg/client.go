@@ -301,9 +301,13 @@ func closeVPNSession(c *http.Client, server string) {
 	// close session
 	r, err := http.NewRequest("GET", fmt.Sprintf("https://%s/vdesk/hangup.php3?hangup_error=1", server), nil)
 	if err != nil {
+		log.Printf("Failed to create a request to close the VPN session %s", err)
+	}
+	resp, err := c.Do(r)
+	if err != nil {
 		log.Printf("Failed to close the VPN session %s", err)
 	}
-	defer c.Do(r)
+	defer resp.Body.Close()
 }
 
 func getServersList(c *http.Client, server string) (*url.URL, error) {
@@ -445,7 +449,8 @@ func Connect(server, username, password string, closeSession, sel bool) error {
 		return fmt.Errorf("failed to parse VPN profiles: %s", err)
 	}
 
-	favorite, err := getConnectionOptions(client, server, profile)
+	// read config, returned by F5
+	config.f5Config, err = getConnectionOptions(client, server, profile)
 	if err != nil {
 		return fmt.Errorf("failed to get VPN connection options: %s", err)
 	}
@@ -456,7 +461,7 @@ func Connect(server, username, password string, closeSession, sel bool) error {
 	}
 
 	// TLS
-	link, err := initConnection(server, config, favorite)
+	link, err := initConnection(server, config)
 	if err != nil {
 		return err
 	}
@@ -465,7 +470,7 @@ func Connect(server, username, password string, closeSession, sel bool) error {
 	var cmd *exec.Cmd
 	if config.PPPD {
 		// VPN
-		if config.IPv6 && bool(favorite.Object.IPv6) {
+		if config.IPv6 && bool(config.f5Config.Object.IPv6) {
 			config.PPPdArgs = append(config.PPPdArgs,
 				"ipv6cp-accept-local",
 				"ipv6cp-accept-remote",
@@ -497,7 +502,7 @@ func Connect(server, username, password string, closeSession, sel bool) error {
 	go link.errorHandler()
 
 	// set routes and DNS
-	go link.waitAndConfig(config, favorite)
+	go link.waitAndConfig(config)
 
 	if config.PPPD {
 		if runtime.GOOS == "freebsd" {

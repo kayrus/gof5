@@ -132,7 +132,7 @@ type Filter struct {
 type Config struct {
 	// defaults to true
 	PPPD        bool         `yaml:"-"`
-	ListenDNS   string       `yaml:"listenDNS"`
+	ListenDNS   net.IP       `yaml:"-"`
 	DNS         []string     `yaml:"dns"`
 	Routes      []*net.IPNet `yaml:"-"`
 	PPPdArgs    []string     `yaml:"pppdArgs"`
@@ -152,8 +152,10 @@ type Config struct {
 	uid int
 	// current user or sudo user GID
 	gid int
-	// list of DNS servers, returned by F5
-	vpnDNSServers []net.IP
+	// Config, returned by F5
+	f5Config *Favorite
+	// save /etc/resolv.conf
+	resolvConf []byte
 }
 
 type Cookies map[string][]string
@@ -163,6 +165,7 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var s struct {
 		tmp
 		PPPD       *bool    `yaml:"pppd"`
+		ListenDNS  *string  `yaml:"listenDNS"`
 		Routes     []string `yaml:"routes"`
 		DNSServers []string `yaml:"dnsServers"`
 		PPPdArgs   []string `yaml:"pppdArgs"`
@@ -183,6 +186,10 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		r.PPPD = false
 	} else {
 		r.PPPD = *s.PPPD
+	}
+
+	if s.ListenDNS != nil {
+		r.ListenDNS = net.ParseIP(*s.ListenDNS)
 	}
 
 	for _, v := range s.Routes {

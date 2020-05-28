@@ -1,8 +1,6 @@
 package pkg
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"log"
 	"net"
@@ -11,46 +9,11 @@ import (
 	"github.com/miekg/dns"
 )
 
-const defaultListenAddr = "127.0.0.1"
-
 // TODO: reverse DNS support, e.g. "in-addr.arpa"
 
-func parseResolvConf(config *Config, resolvConf []byte) {
-	buf := bufio.NewReader(bytes.NewReader(resolvConf))
-	for line, isPrefix, err := buf.ReadLine(); err == nil && isPrefix == false; line, isPrefix, err = buf.ReadLine() {
-		if len(line) > 0 && (line[0] == ';' || line[0] == '#') {
-			continue
-		}
-
-		f := strings.FieldsFunc(string(line), splitFunc)
-		if len(f) < 1 {
-			continue
-		}
-		switch f[0] {
-		case "nameserver":
-			if len(f) > 1 && len(config.DNSServers) < 3 {
-				if v := net.ParseIP(f[1]); v.To4() != nil {
-					config.DNSServers = append(config.DNSServers, v)
-				} else if v.To16() != nil {
-					config.DNSServers = append(config.DNSServers, v)
-				}
-			}
-		}
-	}
-}
-
-func startDns(l *vpnLink, config *Config) string {
-	if len(config.DNSServers) == 0 {
-		parseResolvConf(config, l.resolvConf)
-	}
-
-	listenAddr := defaultListenAddr
-	if config.ListenDNS != "" {
-		listenAddr = config.ListenDNS
-	}
-
-	log.Printf("Serving DNS proxy on %s:53", listenAddr)
-	log.Printf("Forwarding %q DNS requests to %q", config.DNS, config.vpnDNSServers)
+func startDns(l *vpnLink, config *Config) {
+	log.Printf("Serving DNS proxy on %s:53", config.ListenDNS)
+	log.Printf("Forwarding %q DNS requests to %q", config.DNS, config.f5Config.Object.DNS)
 	log.Printf("Default DNS servers: %q", config.DNSServers)
 
 	dnsUdpHandler := func(w dns.ResponseWriter, m *dns.Msg) {
@@ -62,21 +25,19 @@ func startDns(l *vpnLink, config *Config) string {
 	}
 
 	go func() {
-		srv := &dns.Server{Addr: listenAddr + ":53", Net: "udp", Handler: dns.HandlerFunc(dnsUdpHandler)}
+		srv := &dns.Server{Addr: config.ListenDNS.String() + ":53", Net: "udp", Handler: dns.HandlerFunc(dnsUdpHandler)}
 		if err := srv.ListenAndServe(); err != nil {
 			l.errChan <- fmt.Errorf("failed to set udp listener %s", err)
 			return
 		}
 	}()
 	go func() {
-		srv := &dns.Server{Addr: listenAddr + ":53", Net: "tcp", Handler: dns.HandlerFunc(dnsTcpHandler)}
+		srv := &dns.Server{Addr: config.ListenDNS.String() + ":53", Net: "tcp", Handler: dns.HandlerFunc(dnsTcpHandler)}
 		if err := srv.ListenAndServe(); err != nil {
 			l.errChan <- fmt.Errorf("failed to set tcp listener %s", err)
 			return
 		}
 	}()
-
-	return listenAddr
 }
 
 func dnsHandler(w dns.ResponseWriter, m *dns.Msg, config *Config, proto string) {
@@ -87,7 +48,7 @@ func dnsHandler(w dns.ResponseWriter, m *dns.Msg, config *Config, proto string) 
 			if debug {
 				log.Printf("Resolving %q using VPN DNS", m.Question[0].Name)
 			}
-			for _, s := range config.vpnDNSServers {
+			for _, s := range config.f5Config.Object.DNS {
 				if err := handleCustom(w, m, c, s); err == nil {
 					return
 				}
