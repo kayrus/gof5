@@ -12,7 +12,8 @@ import (
 )
 
 var (
-	debug bool
+	debug            bool
+	supportedDrivers = []string{"wireguard", "water", "pppd"}
 )
 
 func SetDebug(d bool) {
@@ -131,7 +132,7 @@ type Filter struct {
 
 type Config struct {
 	// defaults to true
-	PPPD        bool         `yaml:"-"`
+	Driver      string       `yaml:"driver"`
 	ListenDNS   net.IP       `yaml:"-"`
 	DNS         []string     `yaml:"dns"`
 	Routes      []*net.IPNet `yaml:"-"`
@@ -139,7 +140,6 @@ type Config struct {
 	InsecureTLS bool         `yaml:"insecureTLS"`
 	DTLS        bool         `yaml:"dtls"`
 	IPv6        bool         `yaml:"ipv6"`
-	Water       bool         `yaml:"water"`
 	// list of DNS local servers
 	// when list is empty, parsed from /etc/resolv.conf
 	DNSServers []net.IP `yaml:"-"`
@@ -164,7 +164,6 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type tmp Config
 	var s struct {
 		tmp
-		PPPD       *bool    `yaml:"pppd"`
 		ListenDNS  *string  `yaml:"listenDNS"`
 		Routes     []string `yaml:"routes"`
 		DNSServers []string `yaml:"dnsServers"`
@@ -181,11 +180,13 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	*r = Config(s.tmp)
 
-	if s.PPPD == nil {
-		// PPPD is disabled by default
-		r.PPPD = false
-	} else {
-		r.PPPD = *s.PPPD
+	// set default driver
+	if r.Driver == "" {
+		r.Driver = "wireguard"
+	}
+
+	if !strSliceContains(supportedDrivers, r.Driver) {
+		return fmt.Errorf("%q driver is unsupported, supported drivers are: %q", r.Driver, supportedDrivers)
 	}
 
 	if s.ListenDNS != nil {
@@ -450,4 +451,13 @@ func (o *Update) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	}
 
 	return nil
+}
+
+func strSliceContains(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
 }

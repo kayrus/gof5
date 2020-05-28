@@ -103,7 +103,7 @@ func initConnection(server string, config *Config) (*vpnLink, error) {
 		server,
 		config.f5Config.Object.SessionID,
 		base64.StdEncoding.EncodeToString(randomHostname(8)),
-		Bool(config.PPPD),
+		Bool(config.Driver == "pppd"),
 		config.f5Config.Object.IPv4,
 		Bool(config.IPv6 && bool(config.f5Config.Object.IPv6)),
 		config.f5Config.Object.UrZ,
@@ -183,37 +183,36 @@ func initConnection(server string, config *Config) (*vpnLink, error) {
 		}
 	}
 
-	if !config.PPPD {
-		if config.Water {
-			log.Printf("Using water module to create tunnel")
-			device, err := water.New(water.Config{
-				DeviceType: water.TUN,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("failed to create a %q interface: %s", water.TUN, err)
-			}
-
-			link.name = device.Name()
-			log.Printf("Created %s interface", link.name)
-			link.iface = myTun{myConn: device}
-		} else {
-			log.Printf("Using wireguard module to create tunnel")
-			ifname := ""
-			if runtime.GOOS == "darwin" {
-				ifname = "utun"
-			}
-			device, err := tun.CreateTUN(ifname, defaultMTU)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create an interface: %s", err)
-			}
-
-			link.name, err = device.Name()
-			if err != nil {
-				return nil, fmt.Errorf("failed to get an interface name: %s", err)
-			}
-			log.Printf("Created %s interface", link.name)
-			link.iface = myTun{Device: device}
+	switch config.Driver {
+	case "water":
+		log.Printf("Using water module to create tunnel")
+		device, err := water.New(water.Config{
+			DeviceType: water.TUN,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create a %q interface: %s", water.TUN, err)
 		}
+
+		link.name = device.Name()
+		log.Printf("Created %s interface", link.name)
+		link.iface = myTun{myConn: device}
+	case "wireguard":
+		log.Printf("Using wireguard module to create tunnel")
+		ifname := ""
+		if runtime.GOOS == "darwin" {
+			ifname = "utun"
+		}
+		device, err := tun.CreateTUN(ifname, defaultMTU)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create an interface: %s", err)
+		}
+
+		link.name, err = device.Name()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get an interface name: %s", err)
+		}
+		log.Printf("Created %s interface", link.name)
+		link.iface = myTun{Device: device}
 	}
 
 	return link, nil
@@ -246,7 +245,7 @@ func (l *vpnLink) waitAndConfig(config *Config) {
 		return
 	}
 
-	if config.PPPD {
+	if config.Driver == "pppd" {
 		// wait for tun up
 		if !<-l.upChan {
 			l.errChan <- fmt.Errorf("unexpected tun status event")
@@ -267,7 +266,7 @@ func (l *vpnLink) waitAndConfig(config *Config) {
 
 	// set routes
 	log.Printf("Setting routes on %s interface", l.name)
-	if !config.PPPD {
+	if config.Driver != "pppd" {
 		if err := setInterface(l); err != nil {
 			l.errChan <- err
 			return

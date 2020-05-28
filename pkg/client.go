@@ -468,7 +468,7 @@ func Connect(server, username, password string, closeSession, sel bool) error {
 	defer link.conn.Close()
 
 	var cmd *exec.Cmd
-	if config.PPPD {
+	if config.Driver == "pppd" {
 		// VPN
 		if config.IPv6 && bool(config.f5Config.Object.IPv6) {
 			config.PPPdArgs = append(config.PPPdArgs,
@@ -504,7 +504,7 @@ func Connect(server, username, password string, closeSession, sel bool) error {
 	// set routes and DNS
 	go link.waitAndConfig(config)
 
-	if config.PPPD {
+	if config.Driver == "pppd" {
 		if runtime.GOOS == "freebsd" {
 			// pppd log parser
 			go link.pppLogParser()
@@ -548,7 +548,7 @@ func Connect(server, username, password string, closeSession, sel bool) error {
 
 	link.restoreConfig(config)
 
-	if config.PPPD {
+	if config.Driver == "pppd" {
 		// TODO: properly wait for pppd process on ctrl+c
 		cmd.Wait()
 	}
