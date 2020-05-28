@@ -72,18 +72,18 @@ func configureDNS(config *Config) error {
 func restoreDNS(config *Config) {
 	ifaces, err := getInterfaces()
 	if err != nil {
-		log.Printf("%s", err)
+		log.Printf("Failed to restore DNS settings: %s", err)
 		return
 	}
 
 	for _, iface := range ifaces {
-		v, err := exec.Command("networksetup", "-setdnsservers", "Wi-Fi", "empty").Output()
+		v, err := exec.Command("networksetup", "-setdnsservers", iface, "empty").Output()
 		if err != nil {
 			log.Printf("Failed to restore DNS servers on %q: %s: %s", iface, v, err)
 		}
 
 		if config.f5Config.Object.DNSSuffix != "" {
-			v, err := exec.Command("networksetup", "-setsearchdomains", "Wi-Fi", "empty").Output()
+			v, err := exec.Command("networksetup", "-setsearchdomains", iface, "empty").Output()
 			if err != nil {
 				log.Printf("failed to restore DNS search prefix on %q: %s: %s", iface, v, err)
 			}
