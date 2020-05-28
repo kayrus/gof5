@@ -36,7 +36,7 @@ func configureDNS(config *Config) error {
 	return nil
 }
 
-func deConfigureDNS(config *Config) {
+func restoreDNS(config *Config) {
 	if config.resolvConf != nil {
 		log.Printf("Restoring original %s", resolvPath)
 		if err := ioutil.WriteFile(resolvPath, config.resolvConf, 0644); err != nil {

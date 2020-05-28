@@ -306,7 +306,7 @@ func (l *vpnLink) restoreConfig(config *Config) {
 		}
 	}()
 
-	deConfigureDNS(config)
+	restoreDNS(config)
 
 	if l.serverRoutesReady {
 		// remove F5 gateway route

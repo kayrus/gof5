@@ -65,7 +65,7 @@ func routeAdd(dst interface{}, gw net.IP, priority int, iface string) error {
 func routeDel(dst interface{}, gw net.IP, priority int, iface string) error {
 	args := []string{
 		"-n",
-		"del",
+		"delete",
 		"-net",
 		getNet(dst).String(),
 	}
