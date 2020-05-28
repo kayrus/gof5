@@ -71,13 +71,8 @@ func (t *myTun) Read(b []byte) (int, error) {
 		if n < 4 {
 			return 0, err
 		}
-		// TODO: better shift
-		// probably something like
-		// https://github.com/songgao/water/blob/2b4b6d7c09d80835e5f13f6b040d69f00a158b24/syscalls_darwin.go#L224
-		for i := 0; i < n-4; i++ {
-			b[i] = b[i+4]
-		}
-		return n - 4, nil
+		// shift slice to the left
+		return copy(b[:n-4], b[4:n]), nil
 	}
 	return t.myConn.Read(b)
 }
