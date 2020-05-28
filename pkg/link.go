@@ -6,12 +6,14 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"os"
 	"runtime"
 	"sync"
 	"syscall"
+	"time"
 
 	//goCIDR "github.com/apparentlymart/go-cidr/cidr"
 	"github.com/pion/dtls/v2"
@@ -87,13 +89,25 @@ func (t *myTun) Write(b []byte) (int, error) {
 	return t.myConn.Write(b)
 }
 
+func randomHostname(n int) []byte {
+	var letters = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+
+	rand.Seed(time.Now().UnixNano())
+
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return b
+}
+
 // init a TLS connection
 func initConnection(server string, config *Config) (*vpnLink, error) {
 	// TLS
 	getUrl := fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s",
 		server,
 		config.f5Config.Object.SessionID,
-		base64.StdEncoding.EncodeToString([]byte("my-hostname")),
+		base64.StdEncoding.EncodeToString(randomHostname(8)),
 		Bool(config.PPPD),
 		config.f5Config.Object.IPv4,
 		Bool(config.IPv6 && bool(config.f5Config.Object.IPv6)),
