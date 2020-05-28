@@ -2,11 +2,14 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os/user"
 
 	"github.com/kayrus/gof5/pkg"
 )
+
+var Version = "dev"
 
 func main() {
 	var server string
@@ -15,13 +18,20 @@ func main() {
 	var closeSession bool
 	var debug bool
 	var sel bool
+	var version bool
 	flag.StringVar(&server, "server", "", "")
 	flag.StringVar(&username, "username", "", "")
 	flag.StringVar(&password, "password", "", "")
 	flag.BoolVar(&closeSession, "close-session", false, "Close HTTPS VPN session on exit")
 	flag.BoolVar(&debug, "debug", false, "Show debug logs")
 	flag.BoolVar(&sel, "select", false, "Select a server from available F5 servers")
+	flag.BoolVar(&version, "version", false, "Show version")
 	flag.Parse()
+
+	if version {
+		fmt.Printf("gof5 version: %s\n", Version)
+		return
+	}
 
 	if server == "" {
 		log.Fatal("Please define --server parameter")

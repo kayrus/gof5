@@ -3,7 +3,7 @@ APP_NAME:=gof5
 PWD:=$(shell pwd)
 UID:=$(shell id -u)
 VERSION:=$(shell git describe --tags --always --dirty="-dev")
-LDFLAGS:=-X $(PKG)/pkg.Version=$(VERSION)
+LDFLAGS:=-X main.Version=$(VERSION)
 
 # CGO is incompatible with AD/LDAP
 #export CGO_ENABLED:=0
