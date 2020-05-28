@@ -3,16 +3,14 @@ APP_NAME:=gof5
 PWD:=$(shell pwd)
 UID:=$(shell id -u)
 VERSION:=$(shell git describe --tags --always --dirty="-dev")
+GOOS:=$(shell go env GOOS)
 LDFLAGS:=-X main.Version=$(VERSION)
 
-# CGO is incompatible with AD/LDAP
-#export CGO_ENABLED:=0
+# CGO must be enabled
+export CGO_ENABLED:=1
 
 build: fmt vet
-	GOOS=linux go build -mod=vendor -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME) ./cmd
-	GOOS=freebsd go build -mod=vendor -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME)_freebsd ./cmd
-	GOOS=darwin go build -mod=vendor -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME)_darwin ./cmd
-	#GOOS=windows go build -mod=vendor -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME).exe ./cmd
+	go build -mod=vendor -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME)_$(GOOS) ./cmd
 
 docker:
 	docker run -ti --rm -e GOCACHE=/tmp -v $(PWD):/$(APP_NAME) -u $(UID):$(UID) --workdir /$(APP_NAME) golang:latest make

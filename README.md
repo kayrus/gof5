@@ -7,10 +7,8 @@
 ## HOWTO
 
 ```sh
-$ make
-# or to build inside the golang docker container
-$ make docker
-$ sudo ./bin/gof5 --server server --username username --password token
+# download the latest release
+$ sudo gof5 --server server --username username --password token
 ```
 
 When username and password are not provided, they will be asked if `~/.gof5/cookies.yaml` file doesn't contain previously saved HTTPS session cookies or when the saved session is expired or explicitly terminated (`--close-session`).
