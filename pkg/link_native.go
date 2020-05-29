@@ -65,7 +65,7 @@ func bytesToIPv6(bytes []byte) net.IP {
 	return net.IP(append([]byte{0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, append(bytes[:0:0], bytes...)...))
 }
 
-func processPPP(link *vpnLink, buf []byte) error {
+func processPPP(link *vpnLink, buf []byte, dstBuf *bytes.Buffer) error {
 	// process ipv4 traffic
 	if v := readBuf(buf, ipv4header); v != nil {
 		if debug {
@@ -123,7 +123,7 @@ func processPPP(link *vpnLink, buf []byte) error {
 					doResp.Write(v4)
 					doResp.Write(v)
 
-					err := toF5(link.conn, doResp.Bytes())
+					err := toF5(link.conn, doResp.Bytes(), dstBuf)
 					if err != nil {
 						return err
 					}
@@ -141,7 +141,7 @@ func processPPP(link *vpnLink, buf []byte) error {
 						doResp.WriteByte(0)
 					}
 
-					return toF5(link.conn, doResp.Bytes())
+					return toF5(link.conn, doResp.Bytes(), dstBuf)
 				}
 			}
 		}
@@ -179,7 +179,7 @@ func processPPP(link *vpnLink, buf []byte) error {
 					doResp.Write(v4)
 					doResp.Write(v)
 
-					return toF5(link.conn, doResp.Bytes())
+					return toF5(link.conn, doResp.Bytes(), dstBuf)
 				}
 			}
 		}
@@ -206,7 +206,7 @@ func processPPP(link *vpnLink, buf []byte) error {
 					doResp.Write(v6)
 					doResp.Write(v)
 
-					err := toF5(link.conn, doResp.Bytes())
+					err := toF5(link.conn, doResp.Bytes(), dstBuf)
 					if err != nil {
 						return err
 					}
@@ -224,7 +224,7 @@ func processPPP(link *vpnLink, buf []byte) error {
 						doResp.WriteByte(0)
 					}
 
-					return toF5(link.conn, doResp.Bytes())
+					return toF5(link.conn, doResp.Bytes(), dstBuf)
 				}
 			}
 		}
@@ -258,7 +258,7 @@ func processPPP(link *vpnLink, buf []byte) error {
 					doResp.Write(v6)
 					doResp.Write(v)
 
-					return toF5(link.conn, doResp.Bytes())
+					return toF5(link.conn, doResp.Bytes(), dstBuf)
 				}
 			}
 		}
@@ -288,7 +288,7 @@ func processPPP(link *vpnLink, buf []byte) error {
 				doResp.WriteByte(id)
 				doResp.Write(v[1:])
 
-				return toF5(link.conn, doResp.Bytes())
+				return toF5(link.conn, doResp.Bytes(), dstBuf)
 			}
 			if v := readBuf(v, protoReject); v != nil {
 				id := v[0]
@@ -327,7 +327,7 @@ func processPPP(link *vpnLink, buf []byte) error {
 								doResp.Write(pfc)
 								doResp.Write(acfc)
 
-								err := toF5(link.conn, doResp.Bytes())
+								err := toF5(link.conn, doResp.Bytes(), dstBuf)
 								if err != nil {
 									return err
 								}
@@ -343,7 +343,7 @@ func processPPP(link *vpnLink, buf []byte) error {
 								doResp.Write(magicHeader)
 								doResp.Write(magic)
 
-								return toF5(link.conn, doResp.Bytes())
+								return toF5(link.conn, doResp.Bytes(), dstBuf)
 							} else {
 								return fmt.Errorf("wrong magic header")
 							}
@@ -377,7 +377,7 @@ func processPPP(link *vpnLink, buf []byte) error {
 										doResp.Write(pfc)
 										doResp.Write(acfc)
 
-										return toF5(link.conn, doResp.Bytes())
+										return toF5(link.conn, doResp.Bytes(), dstBuf)
 									}
 								}
 							}
@@ -421,7 +421,7 @@ func processPPP(link *vpnLink, buf []byte) error {
 	return fmt.Errorf("unknown PPP data:\n%s", hex.Dump(buf))
 }
 
-func fromF5(link *vpnLink) error {
+func fromF5(link *vpnLink, dstBuf *bytes.Buffer) error {
 	// read the F5 packet header
 	buf := make([]byte, 2)
 	n, err := io.ReadFull(link.conn, buf)
@@ -450,18 +450,19 @@ func fromF5(link *vpnLink) error {
 	}
 
 	// process the packet
-	return processPPP(link, buf)
+	return processPPP(link, buf, dstBuf)
 }
 
-// Encode F5 packet
+// Decode F5 packet
 // http->tun
 func (l *vpnLink) httpToTun() {
+	dstBuf := &bytes.Buffer{}
 	for {
 		select {
 		case <-l.termChan:
 			return
 		default:
-			err := fromF5(l)
+			err := fromF5(l, dstBuf)
 			if err != nil {
 				l.errChan <- err
 				return
@@ -470,22 +471,15 @@ func (l *vpnLink) httpToTun() {
 	}
 }
 
-func toF5(conn myConn, buf []byte) error {
-	var dst io.ReadWriter
-	buffer := true
-
-	if buffer {
-		dst = &bytes.Buffer{}
-	} else {
-		dst = conn
-	}
-
+func toF5(conn myConn, buf []byte, dst *bytes.Buffer) error {
 	// TODO: move buffer initialization into tunToHttp
 	// probably a buffered pipe would be nicer
 	length := len(buf)
 	if length == 0 {
 		return fmt.Errorf("cannot encapsulate zero packet")
 	}
+
+	defer dst.Reset()
 
 	// TODO: check packet header length (ipv4.HeaderLen, ipv6.HeaderLen)
 	switch buf[0] >> 4 {
@@ -518,32 +512,22 @@ func toF5(conn myConn, buf []byte) error {
 		log.Printf("Sending from pppd:\n%s", hex.Dump(buf))
 	}
 
-	if buffer {
-		_, err = dst.Write(buf)
-		if err != nil {
-			return fmt.Errorf("fatal write to http: %s", err)
-		}
-		wn, err := io.Copy(conn, dst)
-		if err != nil {
-			return fmt.Errorf("fatal write to http: %s", err)
-		}
-		if debug {
-			log.Printf("Sent %d bytes to http", wn)
-		}
-	} else {
-		wn, err := dst.Write(buf)
-		if err != nil {
-			return fmt.Errorf("fatal write to http: %s", err)
-		}
-		if debug {
-			log.Printf("Sent %d bytes to http", wn)
-		}
+	_, err = dst.Write(buf)
+	if err != nil {
+		return fmt.Errorf("fatal write to http: %s", err)
+	}
+	wn, err := io.Copy(conn, dst)
+	if err != nil {
+		return fmt.Errorf("fatal write to http: %s", err)
+	}
+	if debug {
+		log.Printf("Sent %d bytes to http", wn)
 	}
 
 	return nil
 }
 
-// Decode into F5 packet
+// Encode into F5 packet
 // tun->http
 func (l *vpnLink) tunToHttp() {
 	done := <-l.upChan
@@ -552,6 +536,7 @@ func (l *vpnLink) tunToHttp() {
 		return
 	}
 	buf := make([]byte, bufferSize)
+	dstBuf := &bytes.Buffer{}
 	for {
 		select {
 		case <-l.termChan:
@@ -568,7 +553,7 @@ func (l *vpnLink) tunToHttp() {
 				log.Printf("ipv4 from tun: %s", header)
 			}
 
-			err = toF5(l.conn, buf[:rn])
+			err = toF5(l.conn, buf[:rn], dstBuf)
 			if err != nil {
 				l.errChan <- err
 				return
