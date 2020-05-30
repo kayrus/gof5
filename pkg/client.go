@@ -531,16 +531,16 @@ func Connect(server, username, password string, closeSession, sel bool) error {
 		go link.pppdWait(cmd)
 
 		// pppd http->tun go routine
-		go link.pppdHttpToTun(pppd)
+		go link.pppdHTTPToTun(pppd)
 
 		// pppd tun->http go routine
-		go link.pppdTunToHttp(pppd)
+		go link.pppdTunToHTTP(pppd)
 	} else {
 		// http->tun go routine
 		go link.httpToTun()
 
 		// tun->http go routine
-		go link.tunToHttp()
+		go link.tunToHTTP()
 	}
 
 	signal.Notify(link.termChan, syscall.SIGINT, syscall.SIGTERM)

@@ -344,12 +344,10 @@ func processPPP(link *vpnLink, buf []byte, dstBuf *bytes.Buffer) error {
 								doResp.Write(magic)
 
 								return toF5(link.conn, doResp.Bytes(), dstBuf)
-							} else {
-								return fmt.Errorf("wrong magic header")
 							}
-						} else {
-							return fmt.Errorf("wrong ACCM")
+							return fmt.Errorf("wrong magic header: %x", v)
 						}
+						return fmt.Errorf("wrong ACCM: %x", v)
 					}
 				}
 				if v := readBuf(v[1:], mtuResponse); v != nil {
@@ -472,7 +470,7 @@ func (l *vpnLink) httpToTun() {
 }
 
 func toF5(conn myConn, buf []byte, dst *bytes.Buffer) error {
-	// TODO: move buffer initialization into tunToHttp
+	// TODO: move buffer initialization into tunToHTTP
 	// probably a buffered pipe would be nicer
 	length := len(buf)
 	if length == 0 {
@@ -529,7 +527,7 @@ func toF5(conn myConn, buf []byte, dst *bytes.Buffer) error {
 
 // Encode into F5 packet
 // tun->http
-func (l *vpnLink) tunToHttp() {
+func (l *vpnLink) tunToHTTP() {
 	done := <-l.upChan
 	if !done {
 		log.Printf("Unexpected link state")

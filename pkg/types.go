@@ -41,7 +41,6 @@ type FavoriteItem struct {
 	Params  string `xml:"params"`
 }
 
-// Options
 type Favorite struct {
 	Object Object `xml:"object"`
 }
@@ -299,11 +298,9 @@ func (o *Object) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 
 	if v, err := url.QueryUnescape(s.TrafficControl); err != nil {
 		return fmt.Errorf("failed to unescape %q: %s", s.TrafficControl, err)
-	} else {
-		if v := strings.TrimSpace(v); v != "" {
-			if err = xml.Unmarshal([]byte(v), &o.TrafficControl); err != nil {
-				return err
-			}
+	} else if v := strings.TrimSpace(v); v != "" {
+		if err = xml.Unmarshal([]byte(v), &o.TrafficControl); err != nil {
+			return err
 		}
 	}
 

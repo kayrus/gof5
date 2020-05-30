@@ -99,7 +99,7 @@ func randomHostname(n int) []byte {
 // init a TLS connection
 func initConnection(server string, config *Config) (*vpnLink, error) {
 	// TLS
-	getUrl := fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s",
+	getURL := fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s",
 		server,
 		config.f5Config.Object.SessionID,
 		base64.StdEncoding.EncodeToString(randomHostname(8)),
@@ -146,7 +146,7 @@ func initConnection(server string, config *Config) (*vpnLink, error) {
 			return nil, fmt.Errorf("failed to dial %s:443: %s", server, err)
 		}
 
-		req, err := http.NewRequest("GET", getUrl, nil)
+		req, err := http.NewRequest("GET", getURL, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create VPN session request: %s", err)
 		}
@@ -157,7 +157,7 @@ func initConnection(server string, config *Config) (*vpnLink, error) {
 		}
 
 		if debug {
-			log.Printf("URL: %s", getUrl)
+			log.Printf("URL: %s", getURL)
 		}
 
 		resp, err := http.ReadResponse(bufio.NewReader(link.conn), nil)
@@ -262,7 +262,7 @@ func (l *vpnLink) waitAndConfig(config *Config) {
 		l.errChan <- err
 	}
 
-	startDns(l, config)
+	startDNS(l, config)
 
 	// set routes
 	log.Printf("Setting routes on %s interface", l.name)

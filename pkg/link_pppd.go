@@ -44,7 +44,7 @@ func (l *vpnLink) decodeHDLC(buf []byte, src string) {
 }
 
 // http->tun
-func (l *vpnLink) pppdHttpToTun(pppd *os.File) {
+func (l *vpnLink) pppdHTTPToTun(pppd *os.File) {
 	buf := make([]byte, bufferSize)
 	for {
 		select {
@@ -73,7 +73,7 @@ func (l *vpnLink) pppdHttpToTun(pppd *os.File) {
 }
 
 // tun->http
-func (l *vpnLink) pppdTunToHttp(pppd *os.File) {
+func (l *vpnLink) pppdTunToHTTP(pppd *os.File) {
 	buf := make([]byte, bufferSize)
 	for {
 		select {

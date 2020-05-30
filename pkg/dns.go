@@ -11,28 +11,28 @@ import (
 
 // TODO: reverse DNS support, e.g. "in-addr.arpa"
 
-func startDns(l *vpnLink, config *Config) {
+func startDNS(l *vpnLink, config *Config) {
 	log.Printf("Serving DNS proxy on %s:53", config.ListenDNS)
 	log.Printf("Forwarding %q DNS requests to %q", config.DNS, config.f5Config.Object.DNS)
 	log.Printf("Default DNS servers: %q", config.DNSServers)
 
-	dnsUdpHandler := func(w dns.ResponseWriter, m *dns.Msg) {
+	dnsUDPHandler := func(w dns.ResponseWriter, m *dns.Msg) {
 		dnsHandler(w, m, config, "udp")
 	}
 
-	dnsTcpHandler := func(w dns.ResponseWriter, m *dns.Msg) {
+	dnsTCPHandler := func(w dns.ResponseWriter, m *dns.Msg) {
 		dnsHandler(w, m, config, "tcp")
 	}
 
 	go func() {
-		srv := &dns.Server{Addr: config.ListenDNS.String() + ":53", Net: "udp", Handler: dns.HandlerFunc(dnsUdpHandler)}
+		srv := &dns.Server{Addr: config.ListenDNS.String() + ":53", Net: "udp", Handler: dns.HandlerFunc(dnsUDPHandler)}
 		if err := srv.ListenAndServe(); err != nil {
 			l.errChan <- fmt.Errorf("failed to set udp listener %s", err)
 			return
 		}
 	}()
 	go func() {
-		srv := &dns.Server{Addr: config.ListenDNS.String() + ":53", Net: "tcp", Handler: dns.HandlerFunc(dnsTcpHandler)}
+		srv := &dns.Server{Addr: config.ListenDNS.String() + ":53", Net: "tcp", Handler: dns.HandlerFunc(dnsTCPHandler)}
 		if err := srv.ListenAndServe(); err != nil {
 			l.errChan <- fmt.Errorf("failed to set tcp listener %s", err)
 			return
