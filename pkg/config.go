@@ -160,6 +160,18 @@ func readConfig() (*Config, error) {
 		if err = yaml.Unmarshal(raw, &config); err != nil {
 			return nil, fmt.Errorf("cannot parse %s file: %v", configName, err)
 		}
+	} else {
+		log.Printf("Cannot read config file: %s", err)
+		log.Printf("Routes through VPN are not set, please set the routes in the config")
+	}
+
+	// set default driver
+	if config.Driver == "" {
+		config.Driver = "wireguard"
+	}
+
+	if !strSliceContains(supportedDrivers, config.Driver) {
+		return nil, fmt.Errorf("%q driver is unsupported, supported drivers are: %q", config.Driver, supportedDrivers)
 	}
 
 	// read current resolv.conf

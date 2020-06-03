@@ -179,15 +179,6 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	*r = Config(s.tmp)
 
-	// set default driver
-	if r.Driver == "" {
-		r.Driver = "wireguard"
-	}
-
-	if !strSliceContains(supportedDrivers, r.Driver) {
-		return fmt.Errorf("%q driver is unsupported, supported drivers are: %q", r.Driver, supportedDrivers)
-	}
-
 	if s.ListenDNS != nil {
 		r.ListenDNS = net.ParseIP(*s.ListenDNS)
 	}
