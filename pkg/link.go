@@ -262,7 +262,9 @@ func (l *vpnLink) waitAndConfig(config *Config) {
 		l.errChan <- err
 	}
 
-	startDNS(l, config)
+	if len(config.DNS) > 0 {
+		startDNS(l, config)
+	}
 
 	// set routes
 	log.Printf("Setting routes on %s interface", l.name)
