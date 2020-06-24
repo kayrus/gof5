@@ -71,7 +71,7 @@ func routeAdd(dst interface{}, gw net.IP, priority int, iface string) error {
 		}
 		route.LinkIndex = link.Attrs().Index
 	}
-	if err := netlink.RouteAdd(&route); err != nil {
+	if err := netlink.RouteReplace(&route); err != nil {
 		return fmt.Errorf("failed to add %s route to %q interface: %s", dst, iface, err)
 	}
 	return nil
