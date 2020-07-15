@@ -256,14 +256,16 @@ func (l *vpnLink) waitAndConfig(config *Config) {
 	l.Lock()
 	defer l.Unlock()
 
-	// define DNS servers, provided by F5
-	log.Printf("Setting %s", resolvPath)
-	if err = configureDNS(config); err != nil {
-		l.errChan <- err
-	}
+	if !config.DisableDNS {
+		// define DNS servers, provided by F5
+		log.Printf("Setting %s", resolvPath)
+		if err = configureDNS(config); err != nil {
+			l.errChan <- err
+		}
 
-	if len(config.DNS) > 0 {
-		startDNS(l, config)
+		if len(config.DNS) > 0 {
+			startDNS(l, config)
+		}
 	}
 
 	// set routes
@@ -321,7 +323,9 @@ func (l *vpnLink) restoreConfig(config *Config) {
 		}
 	}()
 
-	restoreDNS(config)
+	if !config.DisableDNS {
+		restoreDNS(config)
+	}
 
 	if l.serverRoutesReady {
 		// remove F5 gateway route

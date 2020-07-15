@@ -43,6 +43,9 @@ ipv6: false
 driver: wireguard
 # When pppd driver is used, you can specify a list of extra pppd arguments
 PPPdArgs: []
+# disableDNS allows to completely disable DNS handling,
+# i.e. don't alter the /etc/resolv.conf file at all
+disableDNS: false
 # a list of DNS zones to be resolved by VPN DNS servers
 # when empty, every DNS query will be resolved by VPN DNS servers
 dns:

@@ -139,6 +139,8 @@ type Config struct {
 	InsecureTLS bool         `yaml:"insecureTLS"`
 	DTLS        bool         `yaml:"dtls"`
 	IPv6        bool         `yaml:"ipv6"`
+	// completely disable DNS servers handling
+	DisableDNS bool `yaml:"disableDNS"`
 	// list of DNS local servers
 	// when list is empty, parsed from /etc/resolv.conf
 	DNSServers []net.IP `yaml:"-"`

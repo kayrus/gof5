@@ -174,10 +174,12 @@ func readConfig() (*Config, error) {
 		return nil, fmt.Errorf("%q driver is unsupported, supported drivers are: %q", config.Driver, supportedDrivers)
 	}
 
-	// read current resolv.conf
-	config.resolvConf, err = ioutil.ReadFile(resolvPath)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read %s: %s", resolvPath, err)
+	if !config.DisableDNS {
+		// read current resolv.conf
+		config.resolvConf, err = ioutil.ReadFile(resolvPath)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read %s: %s", resolvPath, err)
+		}
 	}
 
 	if len(config.DNSServers) == 0 {
