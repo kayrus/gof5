@@ -543,7 +543,7 @@ func Connect(server, username, password string, closeSession, sel bool) error {
 		go link.tunToHTTP()
 	}
 
-	signal.Notify(link.termChan, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(link.termChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGPIPE)
 	<-link.termChan
 
 	link.restoreConfig(config)
