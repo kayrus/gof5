@@ -35,6 +35,8 @@ func routeGet(dst net.IP) ([]net.IP, error) {
 }
 
 func routeAdd(dst interface{}, gw net.IP, priority int, iface string) error {
+	// an implementation of "replace"
+	routeDel(dst, gw, priority, iface)
 	args := []string{
 		"-n",
 		"add",
