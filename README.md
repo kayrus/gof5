@@ -49,8 +49,10 @@ disableDNS: false
 # a list of DNS zones to be resolved by VPN DNS servers
 # when empty, every DNS query will be resolved by VPN DNS servers
 dns:
-- corp.int.
-- corp.
+- .corp.int.
+- .corp.
+# for reverse DNS lookup
+- .in-addr.arpa.
 # a list of primary DNS servers
 # Primary DNS servers. When empty, will be parsed from /etc/resolv.conf
 dnsServers:

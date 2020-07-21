@@ -9,8 +9,6 @@ import (
 	"github.com/miekg/dns"
 )
 
-// TODO: reverse DNS support, e.g. "in-addr.arpa"
-
 func startDNS(l *vpnLink, config *Config) {
 	log.Printf("Serving DNS proxy on %s:53", config.ListenDNS)
 	log.Printf("Forwarding %q DNS requests to %q", config.DNS, config.f5Config.Object.DNS)
