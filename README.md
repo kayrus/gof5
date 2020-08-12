@@ -2,11 +2,11 @@
 
 ## Requirements
 
-* application must be executed under privileged root user
+* an application must be executed under a privileged root user
 
 ## MacOS
 
-On MacOS run the command below to avoid `cannot be opened because the developer cannot be verified` warning:
+On MacOS run the command below to avoid a `cannot be opened because the developer cannot be verified` warning:
 
 ```sh
 xattr -d com.apple.quarantine ./path/to/gof5_darwin
