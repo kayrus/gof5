@@ -30,6 +30,8 @@ var (
 	mtuRequest = []byte{0x00, 0x18}
 	// Link-Discriminator
 	terminate = []byte{0x00, 0x17}
+	// No network protocols
+	noProtocols = []byte{0x00, 0x20}
 	// Session-Timeout
 	timeout = []byte{0x00, 0x13}
 	//
@@ -277,6 +279,9 @@ func processPPP(link *vpnLink, buf []byte, dstBuf *bytes.Buffer) error {
 				}
 				if v := readBuf(v[1:], timeout); v != nil {
 					return fmt.Errorf("id: %d, Link timed out with: %s", id, v)
+				}
+				if v := readBuf(v[1:], noProtocols); v != nil {
+					return fmt.Errorf("id: %d, Link terminated with: %s", id, v)
 				}
 			}
 			if v := readBuf(v, echoReq); v != nil {
