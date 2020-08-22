@@ -261,6 +261,7 @@ func (l *vpnLink) waitAndConfig(config *Config) {
 		log.Printf("Setting %s", resolvPath)
 		if err = configureDNS(config); err != nil {
 			l.errChan <- err
+			return
 		}
 
 		if len(config.DNS) > 0 {

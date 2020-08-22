@@ -141,6 +141,7 @@ func (l *vpnLink) pppLogParser() {
 	})
 	if err != nil {
 		l.errChan <- fmt.Errorf("failed to read ppp log: %s", err)
+		return
 	}
 	for line := range t.Lines {
 		str := line.Text
