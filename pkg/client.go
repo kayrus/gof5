@@ -171,7 +171,7 @@ func loginSignature(c *http.Client, server string, _, _ *string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 302 {
-		return fmt.Errorf("Login failed")
+		return fmt.Errorf("login failed")
 	}
 
 	_, err = ioutil.ReadAll(resp.Body)
@@ -347,7 +347,7 @@ func getServersList(c *http.Client, server string) (*url.URL, error) {
 }
 
 func Connect(server, username, password string, closeSession, sel bool) error {
-	u, err := url.Parse(fmt.Sprintf("%s", server))
+	u, err := url.Parse(server)
 	if err != nil {
 		return fmt.Errorf("failed to parse server hostname: %s", err)
 	}

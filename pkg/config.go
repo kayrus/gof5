@@ -14,6 +14,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"gopkg.in/yaml.v2"
 )
@@ -34,7 +35,10 @@ func parseCookies(config *Config) Cookies {
 
 	v, err := ioutil.ReadFile(path.Join(config.path, cookiesName))
 	if err != nil {
-		log.Printf("Cannot read cookies file: %v", err)
+		// skip "no such file or directory" error on the first startup
+		if e, ok := err.(*os.PathError); !ok || e.Unwrap() != syscall.ENOENT {
+			log.Printf("Cannot read cookies file: %v", err)
+		}
 		return cookies
 	}
 
@@ -86,7 +90,7 @@ func saveCookies(c *http.Client, u *url.URL, config *Config) error {
 
 func parseResolvConf(config *Config) {
 	buf := bufio.NewReader(bytes.NewReader(config.resolvConf))
-	for line, isPrefix, err := buf.ReadLine(); err == nil && isPrefix == false; line, isPrefix, err = buf.ReadLine() {
+	for line, isPrefix, err := buf.ReadLine(); err == nil && !isPrefix; line, isPrefix, err = buf.ReadLine() {
 		if len(line) > 0 && (line[0] == ';' || line[0] == '#') {
 			continue
 		}

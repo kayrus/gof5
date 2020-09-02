@@ -89,15 +89,15 @@ func (rt *RoundTripper) RoundTrip(request *http.Request) (*http.Response, error)
 	// this is concurrency safe
 	ort := rt.Rt
 	if ort == nil {
-		return nil, fmt.Errorf("Rt RoundTripper is nil, aborting")
+		return nil, fmt.Errorf("rt RoundTripper is nil, aborting")
 	}
 	response, err := ort.RoundTrip(request)
 
-	for response == nil {
+	if response == nil {
 		if rt.Logger != nil {
 			rt.log().ResponsePrintf("Connection error, retries exhausted. Aborting")
 		}
-		err = fmt.Errorf("Connection error, retries exhausted. Aborting. Last error was: %s", err)
+		err = fmt.Errorf("connection error, retries exhausted. Aborting. Last error was: %s", err)
 		return nil, err
 	}
 

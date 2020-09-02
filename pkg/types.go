@@ -78,8 +78,8 @@ func (h Hostname) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 
 type Object struct {
 	SessionID                      string         `xml:"Session_ID"`
-	IPv4                           Bool           `xml:"IPV4_0,string"`
-	IPv6                           Bool           `xml:"IPV6_0,string"`
+	IPv4                           Bool           `xml:"IPV4_0"`
+	IPv6                           Bool           `xml:"IPV6_0"`
 	UrZ                            string         `xml:"ur_Z"`
 	HDLCFraming                    Bool           `xml:"-"`
 	Host                           string         `xml:"host0"`
@@ -92,11 +92,11 @@ type Object struct {
 	DNSUseDNSSuffixForRegistration int            `xml:"DNSUseDNSSuffixForRegistration0"`
 	SplitTunneling                 int            `xml:"SplitTunneling0"`
 	DNSSPlit                       string         `xml:"DNS_SPLIT0"`
-	TunnelDTLS                     bool           `xml:"tunnel_dtls,string"`
-	TunnelPortDTLS                 string         `xml:"tunnel_port_dtls,string"`
-	AllowLocalSubnetAccess         bool           `xml:"AllowLocalSubnetAccess0,string"`
-	AllowLocalDNSServersAccess     bool           `xml:"AllowLocalDNSServersAccess0,string"`
-	AllowLocalDHCPAccess           bool           `xml:"AllowLocalDHCPAccess0,string"`
+	TunnelDTLS                     bool           `xml:"tunnel_dtls"`
+	TunnelPortDTLS                 string         `xml:"tunnel_port_dtls"`
+	AllowLocalSubnetAccess         bool           `xml:"AllowLocalSubnetAccess0"`
+	AllowLocalDNSServersAccess     bool           `xml:"AllowLocalDNSServersAccess0"`
+	AllowLocalDHCPAccess           bool           `xml:"AllowLocalDHCPAccess0"`
 	DNS                            []net.IP       `xml:"-"`
 	DNS6                           []net.IP       `xml:"-"`
 	ExcludeSubnets                 []*net.IPNet   `xml:"-"`
@@ -188,7 +188,7 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	for _, v := range s.Routes {
 		cidr, err := parseCIDR(v)
 		if err != nil {
-			return fmt.Errorf("Cannot parse %s CIDR: %s", v, err)
+			return fmt.Errorf("cannot parse %s CIDR: %s", v, err)
 		}
 		r.Routes = append(r.Routes, cidr)
 	}
@@ -266,7 +266,7 @@ func parseCIDR(s string) (*net.IPNet, error) {
 		if ip != nil {
 			return &net.IPNet{IP: ip, Mask: net.CIDRMask(32, 32)}, nil
 		}
-		return nil, fmt.Errorf("Cannot parse %s CIDR: %s", s, err)
+		return nil, fmt.Errorf("cannot parse %s CIDR: %s", s, err)
 	}
 	return cidr, nil
 }

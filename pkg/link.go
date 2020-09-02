@@ -60,8 +60,6 @@ type myConn interface {
 type myTun struct {
 	tun.Device
 	myConn
-	readBuf  []byte
-	writeBuf []byte
 }
 
 func (t *myTun) Read(b []byte) (int, error) {

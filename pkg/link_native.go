@@ -432,7 +432,7 @@ func processPPP(link *vpnLink, buf []byte, dstBuf *bytes.Buffer) error {
 func fromF5(link *vpnLink, dstBuf *bytes.Buffer) error {
 	// read the F5 packet header
 	buf := make([]byte, 2)
-	n, err := io.ReadFull(link.conn, buf)
+	_, err := io.ReadFull(link.conn, buf)
 	if err != nil {
 		return fmt.Errorf("failed to read F5 packet header: %s", err)
 	}
@@ -449,7 +449,7 @@ func fromF5(link *vpnLink, dstBuf *bytes.Buffer) error {
 
 	// read the packet
 	buf = make([]byte, pkglen)
-	n, err = io.ReadFull(link.conn, buf)
+	n, err := io.ReadFull(link.conn, buf)
 	if err != nil {
 		return fmt.Errorf("failed to read F5 packet of the %d size: %s", pkglen, err)
 	}
@@ -552,7 +552,7 @@ func (l *vpnLink) tunToHTTP() {
 		default:
 			rn, err := l.iface.Read(buf)
 			if err != nil {
-				l.errChan <- fmt.Errorf("Fatal read tun: %s", err)
+				l.errChan <- fmt.Errorf("fatal read tun: %s", err)
 				return
 			}
 			if debug {
