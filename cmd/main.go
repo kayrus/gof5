@@ -14,12 +14,14 @@ func main() {
 	var server string
 	var username string
 	var password string
+	var sessionID string
 	var closeSession bool
 	var debug bool
 	var sel bool
 	flag.StringVar(&server, "server", "", "")
 	flag.StringVar(&username, "username", "", "")
 	flag.StringVar(&password, "password", "", "")
+	flag.StringVar(&sessionID, "session", "", "Reuse a session ID")
 	flag.BoolVar(&closeSession, "close-session", false, "Close HTTPS VPN session on exit")
 	flag.BoolVar(&debug, "debug", false, "Show debug logs")
 	flag.BoolVar(&sel, "select", false, "Select a server from available F5 servers")
@@ -38,7 +40,7 @@ func main() {
 	}
 
 	pkg.SetDebug(debug)
-	err := pkg.Connect(server, username, password, closeSession, sel)
+	err := pkg.Connect(server, username, password, sessionID, closeSession, sel)
 	if err != nil {
 		log.Fatal(err)
 	}

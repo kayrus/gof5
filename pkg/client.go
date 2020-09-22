@@ -354,7 +354,7 @@ func getServersList(c *http.Client, server string) (*url.URL, error) {
 	return u, nil
 }
 
-func Connect(server, username, password string, closeSession, sel bool) error {
+func Connect(server, username, password, sessionID string, closeSession, sel bool) error {
 	u, err := url.Parse(server)
 	if err != nil {
 		return fmt.Errorf("failed to parse server hostname: %s", err)
@@ -413,7 +413,7 @@ func Connect(server, username, password string, closeSession, sel bool) error {
 	}
 
 	// read cookies
-	readCookies(client, u, config)
+	readCookies(client, u, config, sessionID)
 
 	if len(client.Jar.Cookies(u)) == 0 {
 		// need to login

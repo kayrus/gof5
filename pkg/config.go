@@ -49,7 +49,7 @@ func parseCookies(config *Config) Cookies {
 	return cookies
 }
 
-func readCookies(c *http.Client, u *url.URL, config *Config) {
+func readCookies(c *http.Client, u *url.URL, config *Config, sessionID string) {
 	v := parseCookies(config)
 	if v, ok := v[u.Host]; ok {
 		var cookies []*http.Cookie
@@ -57,6 +57,15 @@ func readCookies(c *http.Client, u *url.URL, config *Config) {
 			if v := strings.Split(c, "="); len(v) == 2 {
 				cookies = append(cookies, &http.Cookie{Name: v[0], Value: v[1]})
 			}
+		}
+		c.Jar.SetCookies(u, cookies)
+	}
+
+	if sessionID != "" {
+		log.Printf("Overriding session ID from a CLI argument")
+		// override session ID from CLI parameter
+		cookies := []*http.Cookie{
+			{Name: "MRHSession", Value: sessionID},
 		}
 		c.Jar.SetCookies(u, cookies)
 	}
