@@ -343,6 +343,14 @@ func getServersList(c *http.Client, server string) (*url.URL, error) {
 		return nil, fmt.Errorf("failed to parse server hostname: %s", err)
 	}
 
+	// if scheme is not set, assume https
+	if u.Scheme == "" {
+		u, err = url.Parse("https://" + s.Servers[i].Address)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse server hostname: %s", err)
+		}
+	}
+
 	return u, nil
 }
 
