@@ -58,8 +58,10 @@ func configureDNS(config *Config) error {
 			}
 		}
 
-		if config.f5Config.Object.DNSSuffix != "" {
-			v, err := exec.Command("networksetup", "-setsearchdomains", iface, config.f5Config.Object.DNSSuffix).Output()
+		if len(config.f5Config.Object.DNSSuffix) > 0 {
+			args := []string{"-setsearchdomains", iface}
+			args = append(args, config.f5Config.Object.DNSSuffix...)
+			v, err := exec.Command("networksetup", args...).Output()
 			if err != nil {
 				return fmt.Errorf("failed to set %q DNS search prefix on %q: %s: %s", config.f5Config.Object.DNSSuffix, iface, v, err)
 			}
@@ -82,7 +84,7 @@ func restoreDNS(config *Config) {
 			log.Printf("Failed to restore DNS servers on %q: %s: %s", iface, v, err)
 		}
 
-		if config.f5Config.Object.DNSSuffix != "" {
+		if len(config.f5Config.Object.DNSSuffix) > 0 {
 			v, err := exec.Command("networksetup", "-setsearchdomains", iface, "empty").Output()
 			if err != nil {
 				log.Printf("failed to restore DNS search prefix on %q: %s: %s", iface, v, err)
