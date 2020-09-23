@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"strings"
 )
 
 func configureDNS(config *Config) error {
@@ -24,8 +25,8 @@ func configureDNS(config *Config) error {
 			return fmt.Errorf("failed to write DNS entry into buffer: %s", err)
 		}
 	}
-	if config.f5Config.Object.DNSSuffix != "" {
-		if _, err := dns.WriteString("search " + config.f5Config.Object.DNSSuffix + "\n"); err != nil {
+	if len(config.f5Config.Object.DNSSuffix) > 0 {
+		if _, err := dns.WriteString("search " + strings.Join(config.f5Config.Object.DNSSuffix, " ") + "\n"); err != nil {
 			return fmt.Errorf("failed to write search DNS entry into buffer: %s", err)
 		}
 	}

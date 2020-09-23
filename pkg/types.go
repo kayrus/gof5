@@ -87,7 +87,6 @@ type Object struct {
 	TunnelHost                     string         `xml:"tunnel_host0"`
 	TunnelPort                     string         `xml:"tunnel_port0"`
 	Add2Hosts                      string         `xml:"Add2Hosts0"`
-	DNSSuffix                      string         `xml:"DNSSuffix0"`
 	DNSRegisterConnection          int            `xml:"DNSRegisterConnection0"`
 	DNSUseDNSSuffixForRegistration int            `xml:"DNSUseDNSSuffixForRegistration0"`
 	SplitTunneling                 int            `xml:"SplitTunneling0"`
@@ -102,6 +101,7 @@ type Object struct {
 	ExcludeSubnets                 []*net.IPNet   `xml:"-"`
 	ExcludeSubnets6                []*net.IPNet   `xml:"-"`
 	TrafficControl                 TrafficControl `xml:"-"`
+	DNSSuffix                      []string       `xml:"-"`
 }
 
 type TrafficControl struct {
@@ -281,6 +281,7 @@ func (o *Object) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		ExcludeSubnets6 string `xml:"ExcludeSubnets6_0"`
 		TrafficControl  string `xml:"TrafficControl0"`
 		HDLCFraming     string `xml:"hdlc_framing"`
+		DNSSuffix       string `xml:"DNSSuffix0"`
 	}
 
 	err := d.DecodeElement(&s, &start)
@@ -305,6 +306,10 @@ func (o *Object) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	o.HDLCFraming, err = strToBool(s.HDLCFraming)
 	if err != nil {
 		return err
+	}
+
+	if v := strings.TrimSpace(s.DNSSuffix); v != "" {
+		o.DNSSuffix = strings.Split(v, ",")
 	}
 
 	return nil
