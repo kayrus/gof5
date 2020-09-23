@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT
  *
- * Copyright (C) 2019 WireGuard LLC. All Rights Reserved.
+ * Copyright (C) 2020 WireGuard LLC. All Rights Reserved.
  */
 
 package wintun
@@ -59,9 +59,12 @@ func initializeNamespace() error {
 			if err == windows.ERROR_PATH_NOT_FOUND {
 				continue
 			}
+			if err != nil {
+				return fmt.Errorf("OpenPrivateNamespace failed: %v", err)
+			}
 		}
 		if err != nil {
-			return fmt.Errorf("Create/OpenPrivateNamespace failed: %v", err)
+			return fmt.Errorf("CreatePrivateNamespace failed: %v", err)
 		}
 		break
 	}
