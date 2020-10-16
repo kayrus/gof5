@@ -138,7 +138,7 @@ func readConfig() (*Config, error) {
 			}
 		}
 	} else {
-		// detect dome directory
+		// detect home directory
 		usr, err = user.Current()
 		if err != nil {
 			return nil, fmt.Errorf("failed to detect home directory: %s", err)
