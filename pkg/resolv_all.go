@@ -30,7 +30,7 @@ func configureDNS(config *Config) error {
 			return fmt.Errorf("failed to write search DNS entry into buffer: %s", err)
 		}
 	}
-	if err := ioutil.WriteFile(resolvPath, dns.Bytes(), 0644); err != nil {
+	if err := ioutil.WriteFile(resolvPath, dns.Bytes(), 0666); err != nil {
 		return fmt.Errorf("failed to write %s: %s", resolvPath, err)
 	}
 
@@ -40,7 +40,7 @@ func configureDNS(config *Config) error {
 func restoreDNS(config *Config) {
 	if config.resolvConf != nil {
 		log.Printf("Restoring original %s", resolvPath)
-		if err := ioutil.WriteFile(resolvPath, config.resolvConf, 0644); err != nil {
+		if err := ioutil.WriteFile(resolvPath, config.resolvConf, 0666); err != nil {
 			log.Printf("Failed to restore %s: %s", resolvPath, err)
 		}
 	}
