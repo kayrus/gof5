@@ -190,7 +190,7 @@ func readConfig() (*Config, error) {
 	if !config.DisableDNS {
 		// read current resolv.conf
 		config.resolvConf, err = ioutil.ReadFile(resolvPath)
-		if err != nil {
+		if !(err == nil || os.IsNotExist(err)) {
 			return nil, fmt.Errorf("cannot read %s: %s", resolvPath, err)
 		}
 	}

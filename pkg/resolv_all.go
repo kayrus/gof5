@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
 	"strings"
 )
 
 func configureDNS(config *Config) error {
-	dns := bytes.NewBufferString("# created by gof5 VPN client\n")
+	dns := bytes.NewBufferString(fmt.Sprintf("# created by gof5 VPN client (PID %d)\n", os.Getpid()))
 
 	if len(config.DNS) == 0 {
 		log.Printf("Forwarding DNS requests to %q", config.f5Config.Object.DNS)
@@ -38,10 +39,14 @@ func configureDNS(config *Config) error {
 }
 
 func restoreDNS(config *Config) {
-	if config.resolvConf != nil {
-		log.Printf("Restoring original %s", resolvPath)
-		if err := ioutil.WriteFile(resolvPath, config.resolvConf, 0644); err != nil {
-			log.Printf("Failed to restore %s: %s", resolvPath, err)
+	log.Printf("Restoring original %s", resolvPath)
+	if config.resolvConf == nil {
+		if err := os.Remove(resolvPath); err != nil {
+			log.Println(err)
 		}
+		return
+	}
+	if err := ioutil.WriteFile(resolvPath, config.resolvConf, 0666); err != nil {
+		log.Printf("Failed to restore %s: %s", resolvPath, err)
 	}
 }
