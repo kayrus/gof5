@@ -551,7 +551,7 @@ func Connect(server, username, password, sessionID string, closeSession, sel boo
 		go link.tunToHTTP()
 	}
 
-	signal.Notify(link.termChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGPIPE)
+	signal.Notify(link.termChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGPIPE, syscall.SIGHUP)
 	<-link.termChan
 
 	link.restoreConfig(config)
