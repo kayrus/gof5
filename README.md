@@ -12,6 +12,10 @@ On MacOS run the command below to avoid a `cannot be opened because the develope
 xattr -d com.apple.quarantine ./path/to/gof5_darwin
 ```
 
+## FreeBSD
+
+On FreeBSD only `wireguard` or `ppp` (a wrapper around the ppp binary) drivers work. However the `wireguard` driver requires a [FreeBSD patch](freebsd.patch) applied before the compilation.
+
 ## HOWTO
 
 ```sh
