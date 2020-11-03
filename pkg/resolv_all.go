@@ -37,17 +37,17 @@ func configureDNS(config *Config) error {
 		}
 	}
 
-	// default "/etc/resolv.com" permissions
+      // default "/etc/resolv.conf" permissions
 	var perm os.FileMode = 0644
 	if config.resolvConf != nil {
 		info, err := os.Stat(resolvPath)
 		if err != nil {
-			return fmt.Errorf("failed to get a %s file stat: %s", resolvPath, err)
+			return err
 		}
 		// reuse the original "/etc/resolv.com" permissions
 		perm = info.Mode()
 		if err := os.Rename(resolvPath, resolvPathBak); err != nil {
-			return fmt.Errorf("failed to rename a %s to a %s: %s", resolvPath, resolvPathBak, err)
+			return err
 		}
 	}
 
@@ -63,7 +63,7 @@ func restoreDNS(config *Config) {
 		// in case, when there was no "/etc/resolv.conf"
 		log.Printf("Removing custom %s", resolvPath)
 		if err := os.Remove(resolvPath); err != nil {
-			log.Printf("Failed to remove %s: %s", resolvPath, err)
+			log.Println(err)
 		}
 		return
 	}
