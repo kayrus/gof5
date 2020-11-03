@@ -44,7 +44,7 @@ func configureDNS(config *Config) error {
 		if err != nil {
 			return err
 		}
-		// reuse the original "/etc/resolv.com" permissions
+		// reuse the original "/etc/resolv.conf" permissions
 		perm = info.Mode()
 		if err := os.Rename(resolvPath, resolvPathBak); err != nil {
 			return err
