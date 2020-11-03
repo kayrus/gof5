@@ -98,6 +98,10 @@ func saveCookies(c *http.Client, u *url.URL, config *Config) error {
 }
 
 func parseResolvConf(config *Config) {
+	if config.resolvConf == nil {
+		return
+	}
+
 	buf := bufio.NewReader(bytes.NewReader(config.resolvConf))
 	for line, isPrefix, err := buf.ReadLine(); err == nil && !isPrefix; line, isPrefix, err = buf.ReadLine() {
 		if len(line) > 0 && (line[0] == ';' || line[0] == '#') {
@@ -190,7 +194,7 @@ func readConfig() (*Config, error) {
 	if !config.DisableDNS {
 		// read current resolv.conf
 		config.resolvConf, err = ioutil.ReadFile(resolvPath)
-		if err != nil {
+		if err != nil && !os.IsNotExist(err) {
 			return nil, fmt.Errorf("cannot read %s: %s", resolvPath, err)
 		}
 	}
