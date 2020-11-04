@@ -16,6 +16,19 @@ xattr -d com.apple.quarantine ./path/to/gof5_darwin
 
 On FreeBSD only `wireguard` or `ppp` (a wrapper around the ppp binary) drivers work. However the `wireguard` driver requires a [FreeBSD patch](freebsd.patch) applied before the compilation.
 
+## Linux
+
+You only need to install any dependencies, if you want to use `ppp`.
+
+Releases are build on Travis CI and available on the [releases](https://github.com/kayrus/gof5/releases) page.
+
+### Arch Linux
+
+You can install the package directly from [AUR](https://aur.archlinux.org/packages/gof5/) based on the latast release, you can install with with AUR wrapper like:
+```sh
+$ yay -S gof5
+```
+
 ## HOWTO
 
 ```sh
