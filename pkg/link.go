@@ -34,8 +34,8 @@ type vpnLink struct {
 	routesReady       bool
 	serverRoutesReady bool
 	link              netlink.Link
-	iface             myTun
-	conn              myConn
+	iface             f5Tun
+	conn              f5Conn
 	ret               error
 	errChan           chan error
 	upChan            chan bool
@@ -51,18 +51,18 @@ type vpnLink struct {
 	gateways          []net.IP
 }
 
-type myConn interface {
+type f5Conn interface {
 	Write([]byte) (int, error)
 	Read([]byte) (int, error)
 	Close() error
 }
 
-type myTun struct {
+type f5Tun struct {
 	tun.Device
-	myConn
+	f5Conn
 }
 
-func (t *myTun) Read(b []byte) (int, error) {
+func (t *f5Tun) Read(b []byte) (int, error) {
 	if t.Device != nil {
 		// unix.IFF_NO_PI is not set, therefore we receive packet information
 		n, err := t.Device.File().Read(b)
@@ -72,14 +72,14 @@ func (t *myTun) Read(b []byte) (int, error) {
 		// shift slice to the left
 		return copy(b[:n-4], b[4:n]), nil
 	}
-	return t.myConn.Read(b)
+	return t.f5Conn.Read(b)
 }
 
-func (t *myTun) Write(b []byte) (int, error) {
+func (t *f5Tun) Write(b []byte) (int, error) {
 	if t.Device != nil {
 		return t.Device.Write(append(make([]byte, 4), b...), 4)
 	}
-	return t.myConn.Write(b)
+	return t.f5Conn.Write(b)
 }
 
 func randomHostname(n int) []byte {
@@ -193,7 +193,7 @@ func initConnection(server string, config *Config) (*vpnLink, error) {
 
 		link.name = device.Name()
 		log.Printf("Created %s interface", link.name)
-		link.iface = myTun{myConn: device}
+		link.iface = f5Tun{f5Conn: device}
 	case "wireguard":
 		log.Printf("Using wireguard module to create tunnel")
 		ifname := ""
@@ -210,7 +210,7 @@ func initConnection(server string, config *Config) (*vpnLink, error) {
 			return nil, fmt.Errorf("failed to get an interface name: %s", err)
 		}
 		log.Printf("Created %s interface", link.name)
-		link.iface = myTun{Device: device}
+		link.iface = f5Tun{Device: device}
 	}
 
 	return link, nil
@@ -317,8 +317,8 @@ func (l *vpnLink) restoreConfig(config *Config) {
 		if l.iface.Device != nil {
 			l.iface.Device.Close()
 		}
-		if l.iface.myConn != nil {
-			l.iface.myConn.Close()
+		if l.iface.f5Conn != nil {
+			l.iface.f5Conn.Close()
 		}
 	}()
 

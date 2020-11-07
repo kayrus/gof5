@@ -479,7 +479,7 @@ func (l *vpnLink) httpToTun() {
 	}
 }
 
-func toF5(conn myConn, buf []byte, dst *bytes.Buffer) error {
+func toF5(conn f5Conn, buf []byte, dst *bytes.Buffer) error {
 	// TODO: move buffer initialization into tunToHTTP
 	// probably a buffered pipe would be nicer
 	length := len(buf)

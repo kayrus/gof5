@@ -37,7 +37,7 @@ func configureDNS(config *Config) error {
 		}
 	}
 
-      // default "/etc/resolv.conf" permissions
+	// default "/etc/resolv.conf" permissions
 	var perm os.FileMode = 0644
 	if config.resolvConf != nil {
 		info, err := os.Stat(resolvPath)
