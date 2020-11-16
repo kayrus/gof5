@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"os/user"
 	"strings"
+
+	"github.com/IBM/netaddr"
 )
 
 var (
@@ -99,7 +101,9 @@ type Object struct {
 	DNS                            []net.IP       `xml:"-"`
 	DNS6                           []net.IP       `xml:"-"`
 	ExcludeSubnets                 []*net.IPNet   `xml:"-"`
+	Routes                         *netaddr.IPSet `xml:"-"`
 	ExcludeSubnets6                []*net.IPNet   `xml:"-"`
+	Routes6                        *netaddr.IPSet `xml:"-"`
 	TrafficControl                 TrafficControl `xml:"-"`
 	DNSSuffix                      []string       `xml:"-"`
 }
@@ -185,6 +189,11 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		r.ListenDNS = net.ParseIP(*s.ListenDNS)
 	}
 
+	if s.Routes != nil {
+		// handle the case, when routes is an empty list
+		r.Routes = make([]*net.IPNet, 0)
+	}
+
 	for _, v := range s.Routes {
 		cidr, err := parseCIDR(v)
 		if err != nil {
@@ -229,26 +238,47 @@ func splitFunc(c rune) bool {
 	return c == ' '
 }
 
-func processIPs(ips string) []net.IP {
+func processIPs(ips string, length int) []net.IP {
 	if v := strings.FieldsFunc(strings.TrimSpace(ips), splitFunc); len(v) > 0 {
-		var t = make([]net.IP, len(v))
-		for i, v := range v {
-			t[i] = net.ParseIP(v)
+		var t []net.IP
+		for _, v := range v {
+			v := net.ParseIP(v)
+			if length == net.IPv4len {
+				if v.To4() != nil {
+					t = append(t, v)
+				}
+			} else if length == net.IPv6len {
+				t = append(t, v.To16())
+			}
 		}
 		return t
 	}
 	return nil
 }
 
-func processCIDRs(cidrs string) []*net.IPNet {
+func processCIDRs(cidrs string, length int) []*net.IPNet {
 	if v := strings.FieldsFunc(strings.TrimSpace(cidrs), splitFunc); len(v) > 0 {
 		var t []*net.IPNet
 		for _, v := range v {
+			// parse 1.2.3.4/255.255.255.0 format
 			if v := strings.Split(v, "/"); len(v) == 2 {
-				t = append(t, &net.IPNet{
-					IP:   net.ParseIP(v[0]),
-					Mask: net.IPMask(net.ParseIP(v[1])),
-				})
+				ip := net.ParseIP(v[0])
+				mask := net.ParseIP(v[1])
+				if ip == nil || mask == nil {
+					log.Printf("Cannot parse %q CIDR", v)
+					continue
+				}
+				if length == net.IPv4len {
+					t = append(t, &net.IPNet{
+						IP:   ip.To4(),
+						Mask: net.IPMask(mask.To4()),
+					})
+				} else if length == net.IPv6len {
+					t = append(t, &net.IPNet{
+						IP:   ip.To16(),
+						Mask: net.IPMask(mask.To16()),
+					})
+				}
 				continue
 			}
 			log.Printf("Cannot parse %q CIDR", v)
@@ -263,12 +293,64 @@ func parseCIDR(s string) (*net.IPNet, error) {
 	if err != nil {
 		// fallback to a single IP
 		ip := net.ParseIP(s)
-		if ip != nil {
-			return &net.IPNet{IP: ip, Mask: net.CIDRMask(32, 32)}, nil
+		if ip == nil {
+			return nil, fmt.Errorf("cannot parse %s CIDR: %s", s, err)
 		}
-		return nil, fmt.Errorf("cannot parse %s CIDR: %s", s, err)
+		// normalize IP
+		cidr = getNet(ip)
+	} else {
+		// normalize CIDR
+		cidr = getNet(cidr)
 	}
+
+	if cidr == nil {
+		return nil, fmt.Errorf("cannot parse %s CIDR", s)
+	}
+
 	return cidr, nil
+}
+
+func inverseCIDRs4(exclude []*net.IPNet) *netaddr.IPSet {
+	// initialize an empty IPSet
+	ipSet4 := &netaddr.IPSet{}
+
+	all := &net.IPNet{
+		IP:   net.IPv4zero.To4(),
+		Mask: net.CIDRMask(0, 32),
+	}
+	ipSet4.InsertNet(all)
+
+	// remove reserved addresses (rfc8190)
+	soft := &net.IPNet{
+		IP:   net.IPv4zero.To4(),
+		Mask: net.CIDRMask(8, 32),
+	}
+	ipSet4.RemoveNet(soft)
+
+	local := &net.IPNet{
+		IP:   net.IPv4(127, 0, 0, 0).To4(),
+		Mask: net.CIDRMask(8, 32),
+	}
+	ipSet4.RemoveNet(local)
+
+	unicast := &net.IPNet{
+		IP:   net.IPv4(169, 254, 0, 0).To4(),
+		Mask: net.CIDRMask(16, 32),
+	}
+	ipSet4.RemoveNet(unicast)
+
+	multicast := &net.IPNet{
+		IP:   net.IPv4(224, 0, 0, 0).To4(),
+		Mask: net.CIDRMask(4, 32),
+	}
+	ipSet4.RemoveNet(multicast)
+
+	for _, v := range exclude {
+		ipSet4.RemoveNet(v)
+	}
+
+	// get a routes list
+	return ipSet4
 }
 
 func (o *Object) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
@@ -298,10 +380,13 @@ func (o *Object) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		}
 	}
 
-	o.DNS = processIPs(s.DNS)
-	o.DNS6 = processIPs(s.DNS6)
-	o.ExcludeSubnets = processCIDRs(s.ExcludeSubnets)
-	o.ExcludeSubnets6 = processCIDRs(s.ExcludeSubnets6)
+	o.DNS = processIPs(s.DNS, net.IPv4len)
+	o.DNS6 = processIPs(s.DNS6, net.IPv6len)
+	o.ExcludeSubnets = processCIDRs(s.ExcludeSubnets, net.IPv4len)
+	o.ExcludeSubnets6 = processCIDRs(s.ExcludeSubnets6, net.IPv6len)
+
+	// TODO: support IPv6 routes
+	o.Routes = inverseCIDRs4(o.ExcludeSubnets)
 
 	o.HDLCFraming, err = strToBool(s.HDLCFraming)
 	if err != nil {

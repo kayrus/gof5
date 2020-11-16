@@ -294,7 +294,15 @@ func (l *vpnLink) waitAndConfig(config *Config) {
 	}
 
 	// set custom routes
-	for _, cidr := range config.Routes {
+	routes := config.Routes
+	if routes == nil {
+		log.Printf("Applying routes, pushed from F5 VPN server")
+		routes = config.f5Config.Object.Routes.GetNetworks()
+	}
+	for _, cidr := range routes {
+		if debug {
+			log.Printf("Adding %s route", cidr)
+		}
 		if false && cidrContainsIPs(cidr, l.serverIPs) {
 			log.Printf("Skipping %s subnet", cidr)
 			//continue
@@ -340,7 +348,11 @@ func (l *vpnLink) restoreConfig(config *Config) {
 	if l.routesReady {
 		if l.ret == nil {
 			log.Printf("Removing routes from %s interface", l.name)
-			for _, cidr := range config.Routes {
+			routes := config.Routes
+			if routes == nil {
+				routes = config.f5Config.Object.Routes.GetNetworks()
+			}
+			for _, cidr := range routes {
 				if false && cidrContainsIPs(cidr, l.serverIPs) {
 					log.Printf("Skipping %s subnet", cidr)
 					//continue

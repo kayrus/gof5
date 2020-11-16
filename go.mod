@@ -1,7 +1,9 @@
 module github.com/kayrus/gof5
 
 require (
+	github.com/IBM/netaddr v1.4.0
 	github.com/creack/pty v1.1.12-0.20200804180658-a6c0a376f1d0
+	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/howeyc/gopass v0.0.0-20190910152052-7cb4b85ec19c
 	github.com/hpcloud/tail v1.0.0
 	github.com/jackpal/gateway v1.0.7-0.20200819042550-bdc30bb4b0a3
@@ -18,4 +20,4 @@ require (
 	gopkg.in/yaml.v2 v2.3.0
 )
 
-go 1.14
+go 1.15

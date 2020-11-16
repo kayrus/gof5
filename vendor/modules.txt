@@ -1,8 +1,13 @@
+# github.com/IBM/netaddr v1.4.0
+## explicit
+github.com/IBM/netaddr
 # github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
 github.com/chzyer/readline
 # github.com/creack/pty v1.1.12-0.20200804180658-a6c0a376f1d0
 ## explicit
 github.com/creack/pty
+# github.com/fsnotify/fsnotify v1.4.9
+## explicit
 # github.com/howeyc/gopass v0.0.0-20190910152052-7cb4b85ec19c
 ## explicit
 github.com/howeyc/gopass

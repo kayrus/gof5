@@ -39,7 +39,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	log.Printf(info)
+	log.Print(info)
 
 	if server == "" {
 		log.Fatal("Please define --server parameter")

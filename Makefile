@@ -10,16 +10,16 @@ LDFLAGS:=-X main.Version=$(VERSION)
 export CGO_ENABLED:=1
 
 build: fmt vet
-	go build -mod=vendor -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME)_$(GOOS) ./cmd/$(APP_NAME)
+	go build -mod=vendor -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME)_$(GOOS)
 
 docker:
 	docker run -ti --rm -e GOCACHE=/tmp -v $(PWD):/$(APP_NAME) -u $(UID):$(UID) --workdir /$(APP_NAME) golang:latest make
 
 fmt:
-	gofmt -s -w cmd pkg
+	gofmt -s -w pkg
 
 vet:
-	go vet -mod=vendor ./cmd/... ./pkg/...
+	go vet -mod=vendor ./...
 
 mod:
 	go mod vendor

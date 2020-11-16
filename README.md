@@ -75,6 +75,8 @@ dnsServers:
 - 8.8.8.8
 - 8.8.4.4
 # A list of subnets to be routed via VPN
+# When not set, the routes pushed from F5 will be used
+# Use "routes: []", if you don't want gof5 to manage routes at all
 routes:
 - 1.2.3.4
 - 1.2.3.5/32

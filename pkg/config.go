@@ -179,7 +179,6 @@ func readConfig() (*Config, error) {
 		}
 	} else {
 		log.Printf("Cannot read config file: %s", err)
-		log.Printf("Routes through VPN are not set, please set the routes in the config")
 	}
 
 	// set default driver
