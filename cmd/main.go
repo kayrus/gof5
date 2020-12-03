@@ -2,7 +2,9 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
+	"os"
 	"os/user"
 
 	"github.com/kayrus/gof5/pkg"
@@ -18,6 +20,7 @@ func main() {
 	var closeSession bool
 	var debug bool
 	var sel bool
+	var version bool
 	flag.StringVar(&server, "server", "", "")
 	flag.StringVar(&username, "username", "", "")
 	flag.StringVar(&password, "password", "", "")
@@ -25,7 +28,13 @@ func main() {
 	flag.BoolVar(&closeSession, "close-session", false, "Close HTTPS VPN session on exit")
 	flag.BoolVar(&debug, "debug", false, "Show debug logs")
 	flag.BoolVar(&sel, "select", false, "Select a server from available F5 servers")
+	flag.BoolVar(&version, "version", false, "Show version and exit cleanly")
 	flag.Parse()
+
+	if version {
+		fmt.Println(Version)
+		os.Exit(0)
+	}
 
 	log.Printf("gof5 version: %s\n", Version)
 
