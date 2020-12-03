@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/user"
+	"runtime"
 
 	"github.com/kayrus/gof5/pkg"
 )
@@ -31,12 +32,14 @@ func main() {
 	flag.BoolVar(&version, "version", false, "Show version and exit cleanly")
 	flag.Parse()
 
+	info := fmt.Sprintf("gof5 %s compiled with %s for %s/%s", Version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+
 	if version {
-		fmt.Println(Version)
+		fmt.Println(info)
 		os.Exit(0)
 	}
 
-	log.Printf("gof5 version: %s\n", Version)
+	log.Printf(info)
 
 	if server == "" {
 		log.Fatal("Please define --server parameter")
