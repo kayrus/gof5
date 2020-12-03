@@ -55,7 +55,7 @@ ipv6: false
 # driver specifies which tunnel driver to use.
 # supported values are: wireguard, water or pppd.
 # wireguard is default.
-# pppd requires a pppd library
+# pppd requires a pppd or ppp (in FreeBSD) binary
 driver: wireguard
 # When pppd driver is used, you can specify a list of extra pppd arguments
 PPPdArgs: []
