@@ -4,7 +4,7 @@ PWD:=$(shell pwd)
 UID:=$(shell id -u)
 VERSION:=$(shell git describe --tags --always --dirty="-dev")
 GOOS:=$(shell go env GOOS)
-LDFLAGS:=-X main.Version=$(VERSION)
+LDFLAGS:=-X main.Version=$(VERSION) -w -s
 
 # CGO must be enabled
 export CGO_ENABLED:=1
