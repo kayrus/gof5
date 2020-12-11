@@ -1,10 +1,10 @@
-package pkg
+package util
 
 import (
 	"net"
 )
 
-func getNet(v interface{}) *net.IPNet {
+func GetNet(v interface{}) *net.IPNet {
 	if v == nil {
 		return nil
 	}
@@ -39,4 +39,17 @@ func getNet(v interface{}) *net.IPNet {
 	}
 
 	return nil
+}
+
+func SplitFunc(c rune) bool {
+	return c == ' '
+}
+
+func StrSliceContains(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
 }

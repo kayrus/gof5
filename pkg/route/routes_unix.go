@@ -1,32 +1,34 @@
 // +build !linux
 
-package pkg
+package route
 
 import (
 	"fmt"
 	"net"
 	"os/exec"
 
+	"github.com/kayrus/gof5/pkg/util"
+
 	"github.com/jackpal/gateway"
 )
 
-func setInterface(l *vpnLink) error {
-	v, err := exec.Command("ifconfig", l.name, "mtu", fmt.Sprintf("%d", l.mtuInt)).Output()
+func SetInterface(name string, local, server net.IP, mtu int) error {
+	v, err := exec.Command("ifconfig", name, "mtu", fmt.Sprintf("%d", mtu)).Output()
 	if err != nil {
 		return fmt.Errorf("failed to set MTU: %s: %s", v, err)
 	}
-	v, err = exec.Command("ifconfig", l.name, "inet", getNet(l.localIPv4).String(), l.serverIPv4.String()).Output()
+	v, err = exec.Command("ifconfig", name, "inet", util.GetNet(local).String(), server.String()).Output()
 	if err != nil {
 		return fmt.Errorf("failed to set ip addr: %s: %s", v, err)
 	}
-	v, err = exec.Command("ifconfig", l.name, "up").Output()
+	v, err = exec.Command("ifconfig", name, "up").Output()
 	if err != nil {
 		return fmt.Errorf("failed to bring up interface: %s: %s", v, err)
 	}
 	return nil
 }
 
-func routeGet(dst net.IP) ([]net.IP, error) {
+func RouteGet(dst net.IP) ([]net.IP, error) {
 	v, err := gateway.DiscoverGateway()
 	if err != nil {
 		return nil, fmt.Errorf("failed to discover the gateway for %s: %s", dst, err)
@@ -34,42 +36,42 @@ func routeGet(dst net.IP) ([]net.IP, error) {
 	return []net.IP{v}, nil
 }
 
-func routeAdd(dst interface{}, gw net.IP, priority int, iface string) error {
+func RouteAdd(dst interface{}, gw net.IP, priority int, name string) error {
 	// an implementation of "replace"
-	routeDel(dst, gw, priority, iface)
+	RouteDel(dst, gw, priority, name)
 	args := []string{
 		"-n",
 		"add",
 		"-net",
-		getNet(dst).String(),
+		util.GetNet(dst).String(),
 	}
 	if gw == nil {
-		args = append(args, "-interface", iface)
+		args = append(args, "-interface", name)
 	} else {
 		args = append(args, gw.String())
 	}
 	v, err := exec.Command("route", args...).Output()
 	if err != nil {
-		return fmt.Errorf("failed to add %s route to %s interface: %s: %s", dst, iface, v, err)
+		return fmt.Errorf("failed to add %s route to %s interface: %s: %s", dst, name, v, err)
 	}
 	return nil
 }
 
-func routeDel(dst interface{}, gw net.IP, priority int, iface string) error {
+func RouteDel(dst interface{}, gw net.IP, priority int, name string) error {
 	args := []string{
 		"-n",
 		"delete",
 		"-net",
-		getNet(dst).String(),
+		util.GetNet(dst).String(),
 	}
 	if gw == nil {
-		args = append(args, "-interface", iface)
+		args = append(args, "-interface", name)
 	} else {
 		args = append(args, gw.String())
 	}
 	v, err := exec.Command("route", args...).Output()
 	if err != nil {
-		return fmt.Errorf("failed to delete %s route from %s interface: %s: %s", dst, iface, v, err)
+		return fmt.Errorf("failed to delete %s route from %s interface: %s: %s", dst, name, v, err)
 	}
 	return nil
 }

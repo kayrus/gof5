@@ -1,4 +1,4 @@
-package pkg
+package link
 
 import (
 	"bufio"
@@ -15,32 +15,35 @@ import (
 	"syscall"
 	"time"
 
-	//goCIDR "github.com/apparentlymart/go-cidr/cidr"
+	"github.com/kayrus/gof5/pkg/config"
+	"github.com/kayrus/gof5/pkg/dns"
+	"github.com/kayrus/gof5/pkg/resolv"
+	"github.com/kayrus/gof5/pkg/route"
+
 	"github.com/pion/dtls/v2"
 	"github.com/songgao/water"
-	"github.com/vishvananda/netlink"
 	"golang.zx2c4.com/wireguard/tun"
 )
 
 const (
-	printGreen = "\033[1;32m%s\033[0m"
-	bufferSize = 1500
-	defaultMTU = 1420
+	printGreen   = "\033[1;32m%s\033[0m"
+	bufferSize   = 1500
+	defaultMTU   = 1420
+	userAgentVPN = "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; Trident/6.0; F5 Networks Client)"
 )
 
 type vpnLink struct {
 	sync.Mutex
+	HTTPConn          f5Conn
+	Ret               error
+	TermChan          chan os.Signal
 	name              string
 	routesReady       bool
 	serverRoutesReady bool
-	link              netlink.Link
 	iface             f5Tun
-	conn              f5Conn
-	ret               error
 	errChan           chan error
 	upChan            chan bool
 	nameChan          chan string
-	termChan          chan os.Signal
 	serverIPs         []net.IP
 	localIPv4         net.IP
 	serverIPv4        net.IP
@@ -49,6 +52,7 @@ type vpnLink struct {
 	mtu               []byte
 	mtuInt            uint16
 	gateways          []net.IP
+	debug             bool
 }
 
 type f5Conn interface {
@@ -95,16 +99,16 @@ func randomHostname(n int) []byte {
 }
 
 // init a TLS connection
-func initConnection(server string, config *Config) (*vpnLink, error) {
+func InitConnection(server string, cfg *config.Config) (*vpnLink, error) {
 	// TLS
 	getURL := fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s",
 		server,
-		config.f5Config.Object.SessionID,
+		cfg.F5Config.Object.SessionID,
 		base64.StdEncoding.EncodeToString(randomHostname(8)),
-		Bool(config.Driver == "pppd"),
-		config.f5Config.Object.IPv4,
-		Bool(config.IPv6 && bool(config.f5Config.Object.IPv6)),
-		config.f5Config.Object.UrZ,
+		config.Bool(cfg.Driver == "pppd"),
+		cfg.F5Config.Object.IPv4,
+		config.Bool(cfg.IPv6 && bool(cfg.F5Config.Object.IPv6)),
+		cfg.F5Config.Object.UrZ,
 	)
 
 	serverIPs, err := net.LookupIP(server)
@@ -113,33 +117,35 @@ func initConnection(server string, config *Config) (*vpnLink, error) {
 	}
 
 	// define link channels
-	link := &vpnLink{
+	l := &vpnLink{
 		serverIPs: serverIPs,
 		errChan:   make(chan error, 1),
 		upChan:    make(chan bool, 1),
 		nameChan:  make(chan string, 1),
-		termChan:  make(chan os.Signal, 1),
+		TermChan:  make(chan os.Signal, 1),
+		debug:     cfg.Debug,
 	}
 
-	if config.DTLS && config.f5Config.Object.TunnelDTLS {
-		s := fmt.Sprintf("%s:%s", server, config.f5Config.Object.TunnelPortDTLS)
+	if cfg.DTLS && cfg.F5Config.Object.TunnelDTLS {
+		s := fmt.Sprintf("%s:%s", server, cfg.F5Config.Object.TunnelPortDTLS)
 		log.Printf("Connecting to %s using DTLS", s)
 		addr, err := net.ResolveUDPAddr("udp", s)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve UDP address: %s", err)
 		}
 		conf := &dtls.Config{
-			InsecureSkipVerify: config.InsecureTLS,
+			InsecureSkipVerify: cfg.InsecureTLS,
+			ServerName:         server,
 		}
-		link.conn, err = dtls.Dial("udp4", addr, conf)
+		l.HTTPConn, err = dtls.Dial("udp", addr, conf)
 		if err != nil {
-			return nil, fmt.Errorf("failed to dial %s:%s: %s", server, config.f5Config.Object.TunnelPortDTLS, err)
+			return nil, fmt.Errorf("failed to dial %s:%s: %s", server, cfg.F5Config.Object.TunnelPortDTLS, err)
 		}
 	} else {
 		conf := &tls.Config{
-			InsecureSkipVerify: config.InsecureTLS,
+			InsecureSkipVerify: cfg.InsecureTLS,
 		}
-		link.conn, err = tls.Dial("tcp", fmt.Sprintf("%s:443", server), conf)
+		l.HTTPConn, err = tls.Dial("tcp", fmt.Sprintf("%s:443", server), conf)
 		if err != nil {
 			return nil, fmt.Errorf("failed to dial %s:443: %s", server, err)
 		}
@@ -149,39 +155,39 @@ func initConnection(server string, config *Config) (*vpnLink, error) {
 			return nil, fmt.Errorf("failed to create VPN session request: %s", err)
 		}
 		req.Header.Set("User-Agent", userAgentVPN)
-		err = req.Write(link.conn)
+		err = req.Write(l.HTTPConn)
 		if err != nil {
 			return nil, fmt.Errorf("failed to send VPN session request: %s", err)
 		}
 
-		if debug {
+		if l.debug {
 			log.Printf("URL: %s", getURL)
 		}
 
-		resp, err := http.ReadResponse(bufio.NewReader(link.conn), nil)
+		resp, err := http.ReadResponse(bufio.NewReader(l.HTTPConn), nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get initial VPN connection response: %s", err)
 		}
 		resp.Body.Close()
 
-		link.localIPv4 = net.ParseIP(resp.Header.Get("X-VPN-client-IP"))
-		link.serverIPv4 = net.ParseIP(resp.Header.Get("X-VPN-server-IP"))
-		link.localIPv6 = net.ParseIP(resp.Header.Get("X-VPN-client-IPv6"))
-		link.serverIPv6 = net.ParseIP(resp.Header.Get("X-VPN-server-IPv6"))
+		l.localIPv4 = net.ParseIP(resp.Header.Get("X-VPN-client-IP"))
+		l.serverIPv4 = net.ParseIP(resp.Header.Get("X-VPN-server-IP"))
+		l.localIPv6 = net.ParseIP(resp.Header.Get("X-VPN-client-IPv6"))
+		l.serverIPv6 = net.ParseIP(resp.Header.Get("X-VPN-server-IPv6"))
 
-		if debug {
-			log.Printf("Client IP: %s", link.localIPv4)
-			log.Printf("Server IP: %s", link.serverIPv4)
-			if link.localIPv6 != nil {
-				log.Printf("Client IPv6: %s", link.localIPv6)
+		if l.debug {
+			log.Printf("Client IP: %s", l.localIPv4)
+			log.Printf("Server IP: %s", l.serverIPv4)
+			if l.localIPv6 != nil {
+				log.Printf("Client IPv6: %s", l.localIPv6)
 			}
-			if link.localIPv6 != nil {
-				log.Printf("Server IPv6: %s", link.serverIPv6)
+			if l.localIPv6 != nil {
+				log.Printf("Server IPv6: %s", l.serverIPv6)
 			}
 		}
 	}
 
-	switch config.Driver {
+	switch cfg.Driver {
 	case "water":
 		log.Printf("Using water module to create tunnel")
 		device, err := water.New(water.Config{
@@ -191,9 +197,9 @@ func initConnection(server string, config *Config) (*vpnLink, error) {
 			return nil, fmt.Errorf("failed to create a %q interface: %s", water.TUN, err)
 		}
 
-		link.name = device.Name()
-		log.Printf("Created %s interface", link.name)
-		link.iface = f5Tun{f5Conn: device}
+		l.name = device.Name()
+		log.Printf("Created %s interface", l.name)
+		l.iface = f5Tun{f5Conn: device}
 	case "wireguard":
 		log.Printf("Using wireguard module to create tunnel")
 		ifname := ""
@@ -205,36 +211,25 @@ func initConnection(server string, config *Config) (*vpnLink, error) {
 			return nil, fmt.Errorf("failed to create an interface: %s", err)
 		}
 
-		link.name, err = device.Name()
+		l.name, err = device.Name()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get an interface name: %s", err)
 		}
-		log.Printf("Created %s interface", link.name)
-		link.iface = f5Tun{Device: device}
+		log.Printf("Created %s interface", l.name)
+		l.iface = f5Tun{Device: device}
 	}
 
-	return link, nil
+	return l, nil
 }
 
 // error handler
-func (l *vpnLink) errorHandler() {
-	l.ret = <-l.errChan
-	l.termChan <- syscall.SIGINT
-}
-
-func cidrContainsIPs(cidr *net.IPNet, ips []net.IP) bool {
-	for _, ip := range ips {
-		if cidr.Contains(ip) {
-			//net, ok := goCIDR.PreviousSubnet(&net.IPNet{IP: ip, Mask: net.CIDRMask(32, 32)}, 17)
-			//log.Printf("Previous: %s %t", net, ok)
-			return true
-		}
-	}
-	return false
+func (l *vpnLink) ErrorHandler() {
+	l.Ret = <-l.errChan
+	l.TermChan <- syscall.SIGINT
 }
 
 // wait for pppd and config DNS and routes
-func (l *vpnLink) waitAndConfig(config *Config) {
+func (l *vpnLink) WaitAndConfig(cfg *config.Config) {
 	var err error
 	// wait for tun name
 	l.name = <-l.nameChan
@@ -243,7 +238,7 @@ func (l *vpnLink) waitAndConfig(config *Config) {
 		return
 	}
 
-	if config.Driver == "pppd" {
+	if cfg.Driver == "pppd" {
 		// wait for tun up
 		if !<-l.upChan {
 			l.errChan <- fmt.Errorf("unexpected tun status event")
@@ -254,23 +249,22 @@ func (l *vpnLink) waitAndConfig(config *Config) {
 	l.Lock()
 	defer l.Unlock()
 
-	if !config.DisableDNS {
+	if !cfg.DisableDNS {
 		// define DNS servers, provided by F5
-		log.Printf("Setting %s", resolvPath)
-		if err = configureDNS(config); err != nil {
+		if err = resolv.ConfigureDNS(cfg); err != nil {
 			l.errChan <- err
 			return
 		}
 
-		if len(config.DNS) > 0 {
-			startDNS(l, config)
+		if len(cfg.DNS) > 0 {
+			dns.Start(cfg, l.errChan)
 		}
 	}
 
 	// set routes
 	log.Printf("Setting routes on %s interface", l.name)
-	if config.Driver != "pppd" {
-		if err := setInterface(l); err != nil {
+	if cfg.Driver != "pppd" {
+		if err := route.SetInterface(l.name, l.localIPv4, l.serverIPv4, int(l.mtuInt)); err != nil {
 			l.errChan <- err
 			return
 		}
@@ -278,13 +272,13 @@ func (l *vpnLink) waitAndConfig(config *Config) {
 
 	// set F5 gateway route
 	for _, dst := range l.serverIPs {
-		gws, err := routeGet(dst)
+		gws, err := route.RouteGet(dst)
 		if err != nil {
 			l.errChan <- err
 			return
 		}
 		for _, gw := range gws {
-			if err = routeAdd(dst, gw, 1, l.name); err != nil {
+			if err = route.RouteAdd(dst, gw, 1, l.name); err != nil {
 				l.errChan <- err
 				return
 			}
@@ -294,20 +288,16 @@ func (l *vpnLink) waitAndConfig(config *Config) {
 	}
 
 	// set custom routes
-	routes := config.Routes
+	routes := cfg.Routes
 	if routes == nil {
 		log.Printf("Applying routes, pushed from F5 VPN server")
-		routes = config.f5Config.Object.Routes.GetNetworks()
+		routes = cfg.F5Config.Object.Routes.GetNetworks()
 	}
 	for _, cidr := range routes {
-		if debug {
+		if l.debug {
 			log.Printf("Adding %s route", cidr)
 		}
-		if false && cidrContainsIPs(cidr, l.serverIPs) {
-			log.Printf("Skipping %s subnet", cidr)
-			//continue
-		}
-		if err = routeAdd(cidr, nil, 0, l.name); err != nil {
+		if err = route.RouteAdd(cidr, nil, 0, l.name); err != nil {
 			l.errChan <- err
 			return
 		}
@@ -317,7 +307,7 @@ func (l *vpnLink) waitAndConfig(config *Config) {
 }
 
 // restore config
-func (l *vpnLink) restoreConfig(config *Config) {
+func (l *vpnLink) RestoreConfig(cfg *config.Config) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -330,15 +320,15 @@ func (l *vpnLink) restoreConfig(config *Config) {
 		}
 	}()
 
-	if !config.DisableDNS {
-		restoreDNS(config)
+	if !cfg.DisableDNS {
+		resolv.RestoreDNS(cfg)
 	}
 
 	if l.serverRoutesReady {
 		// remove F5 gateway route
 		for _, dst := range l.serverIPs {
 			for _, gw := range l.gateways {
-				if err := routeDel(dst, gw, 1, l.name); err != nil {
+				if err := route.RouteDel(dst, gw, 1, l.name); err != nil {
 					log.Print(err)
 				}
 			}
@@ -346,18 +336,14 @@ func (l *vpnLink) restoreConfig(config *Config) {
 	}
 
 	if l.routesReady {
-		if l.ret == nil {
+		if l.Ret == nil {
 			log.Printf("Removing routes from %s interface", l.name)
-			routes := config.Routes
+			routes := cfg.Routes
 			if routes == nil {
-				routes = config.f5Config.Object.Routes.GetNetworks()
+				routes = cfg.F5Config.Object.Routes.GetNetworks()
 			}
 			for _, cidr := range routes {
-				if false && cidrContainsIPs(cidr, l.serverIPs) {
-					log.Printf("Skipping %s subnet", cidr)
-					//continue
-				}
-				if err := routeDel(cidr, nil, 0, l.name); err != nil {
+				if err := route.RouteDel(cidr, nil, 0, l.name); err != nil {
 					log.Print(err)
 				}
 			}

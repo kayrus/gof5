@@ -1,4 +1,4 @@
-package pkg
+package dns
 
 import (
 	"fmt"
@@ -6,54 +6,56 @@ import (
 	"net"
 	"strings"
 
+	"github.com/kayrus/gof5/pkg/config"
+
 	"github.com/miekg/dns"
 )
 
-func startDNS(l *vpnLink, config *Config) {
-	log.Printf("Serving DNS proxy on %s:53", config.ListenDNS)
-	log.Printf("Forwarding %q DNS requests to %q", config.DNS, config.f5Config.Object.DNS)
-	log.Printf("Default DNS servers: %q", config.DNSServers)
+func Start(cfg *config.Config, errChan chan error) {
+	log.Printf("Serving DNS proxy on %s:53", cfg.ListenDNS)
+	log.Printf("Forwarding %q DNS requests to %q", cfg.DNS, cfg.F5Config.Object.DNS)
+	log.Printf("Default DNS servers: %q", cfg.DNSServers)
 
 	dnsUDPHandler := func(w dns.ResponseWriter, m *dns.Msg) {
-		dnsHandler(w, m, config, "udp")
+		dnsHandler(w, m, cfg, "udp")
 	}
 
 	dnsTCPHandler := func(w dns.ResponseWriter, m *dns.Msg) {
-		dnsHandler(w, m, config, "tcp")
+		dnsHandler(w, m, cfg, "tcp")
 	}
 
 	go func() {
-		srv := &dns.Server{Addr: config.ListenDNS.String() + ":53", Net: "udp", Handler: dns.HandlerFunc(dnsUDPHandler)}
+		srv := &dns.Server{Addr: cfg.ListenDNS.String() + ":53", Net: "udp", Handler: dns.HandlerFunc(dnsUDPHandler)}
 		if err := srv.ListenAndServe(); err != nil {
-			l.errChan <- fmt.Errorf("failed to set udp listener %s", err)
+			errChan <- fmt.Errorf("failed to set udp listener %s", err)
 			return
 		}
 	}()
 	go func() {
-		srv := &dns.Server{Addr: config.ListenDNS.String() + ":53", Net: "tcp", Handler: dns.HandlerFunc(dnsTCPHandler)}
+		srv := &dns.Server{Addr: cfg.ListenDNS.String() + ":53", Net: "tcp", Handler: dns.HandlerFunc(dnsTCPHandler)}
 		if err := srv.ListenAndServe(); err != nil {
-			l.errChan <- fmt.Errorf("failed to set tcp listener %s", err)
+			errChan <- fmt.Errorf("failed to set tcp listener %s", err)
 			return
 		}
 	}()
 }
 
-func dnsHandler(w dns.ResponseWriter, m *dns.Msg, config *Config, proto string) {
+func dnsHandler(w dns.ResponseWriter, m *dns.Msg, cfg *config.Config, proto string) {
 	c := new(dns.Client)
 	c.Net = proto
-	for _, suffix := range config.DNS {
+	for _, suffix := range cfg.DNS {
 		if strings.HasSuffix(m.Question[0].Name, suffix) {
-			if debug {
+			if cfg.Debug {
 				log.Printf("Resolving %q using VPN DNS", m.Question[0].Name)
 			}
-			for _, s := range config.f5Config.Object.DNS {
+			for _, s := range cfg.F5Config.Object.DNS {
 				if err := handleCustom(w, m, c, s); err == nil {
 					return
 				}
 			}
 		}
 	}
-	for _, s := range config.DNSServers {
+	for _, s := range cfg.DNSServers {
 		if err := handleCustom(w, m, c, s); err == nil {
 			return
 		}

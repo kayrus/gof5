@@ -21,8 +21,11 @@ fmt:
 vet:
 	go vet -mod=vendor ./...
 
+static:
+	staticcheck ./pkg/...
+
 mod:
 	go mod vendor
 
 test:
-	go test -v ./pkg
+	go test -v ./pkg/...

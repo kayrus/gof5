@@ -1,4 +1,4 @@
-package pkg
+package link
 
 import (
 	"bufio"
@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/kayrus/gof5/pkg/util"
 
 	"github.com/hpcloud/tail"
 	"github.com/zaninime/go-hdlc"
@@ -44,19 +46,19 @@ func (l *vpnLink) decodeHDLC(buf []byte, src string) {
 }
 
 // http->tun
-func (l *vpnLink) pppdHTTPToTun(pppd *os.File) {
+func (l *vpnLink) PppdHTTPToTun(pppd *os.File) {
 	buf := make([]byte, bufferSize)
 	for {
 		select {
-		case <-l.termChan:
+		case <-l.TermChan:
 			return
 		default:
-			rn, err := l.conn.Read(buf)
+			rn, err := l.HTTPConn.Read(buf)
 			if err != nil {
 				l.errChan <- fmt.Errorf("fatal read http: %s", err)
 				return
 			}
-			if debug {
+			if l.debug {
 				l.decodeHDLC(buf[:rn], "http")
 				log.Printf("Read %d bytes from http:\n%s", rn, hex.Dump(buf[:rn]))
 			}
@@ -65,7 +67,7 @@ func (l *vpnLink) pppdHTTPToTun(pppd *os.File) {
 				l.errChan <- fmt.Errorf("fatal write to pppd: %s", err)
 				return
 			}
-			if debug {
+			if l.debug {
 				log.Printf("Sent %d bytes to pppd", wn)
 			}
 		}
@@ -73,11 +75,11 @@ func (l *vpnLink) pppdHTTPToTun(pppd *os.File) {
 }
 
 // tun->http
-func (l *vpnLink) pppdTunToHTTP(pppd *os.File) {
+func (l *vpnLink) PppdTunToHTTP(pppd *os.File) {
 	buf := make([]byte, bufferSize)
 	for {
 		select {
-		case <-l.termChan:
+		case <-l.TermChan:
 			return
 		default:
 			rn, err := pppd.Read(buf)
@@ -85,16 +87,16 @@ func (l *vpnLink) pppdTunToHTTP(pppd *os.File) {
 				l.errChan <- fmt.Errorf("fatal read pppd: %s", err)
 				return
 			}
-			if debug {
+			if l.debug {
 				log.Printf("Read %d bytes from pppd:\n%s", rn, hex.Dump(buf[:rn]))
 				l.decodeHDLC(buf[:rn], "pppd")
 			}
-			wn, err := l.conn.Write(buf[:rn])
+			wn, err := l.HTTPConn.Write(buf[:rn])
 			if err != nil {
 				l.errChan <- fmt.Errorf("fatal write to http: %s", err)
 				return
 			}
-			if debug {
+			if l.debug {
 				log.Printf("Sent %d bytes to http", wn)
 			}
 		}
@@ -102,7 +104,7 @@ func (l *vpnLink) pppdTunToHTTP(pppd *os.File) {
 }
 
 // terminate on pppd termination
-func (l *vpnLink) pppdWait(cmd *exec.Cmd) {
+func (l *vpnLink) PppdWait(cmd *exec.Cmd) {
 	err := cmd.Wait()
 	if err != nil {
 		l.errChan <- fmt.Errorf("pppd %s", err)
@@ -112,7 +114,7 @@ func (l *vpnLink) pppdWait(cmd *exec.Cmd) {
 }
 
 // pppd log parser
-func (l *vpnLink) pppdLogParser(stderr io.Reader) {
+func (l *vpnLink) PppdLogParser(stderr io.Reader) {
 	scanner := bufio.NewScanner(stderr)
 	for scanner.Scan() {
 		str := scanner.Text()
@@ -120,7 +122,7 @@ func (l *vpnLink) pppdLogParser(stderr io.Reader) {
 			str = v[1]
 		}
 		if strings.Contains(str, "Using interface") {
-			if v := strings.FieldsFunc(strings.TrimSpace(str), splitFunc); len(v) > 0 {
+			if v := strings.FieldsFunc(strings.TrimSpace(str), util.SplitFunc); len(v) > 0 {
 				l.nameChan <- v[len(v)-1]
 			}
 		}
@@ -133,7 +135,7 @@ func (l *vpnLink) pppdLogParser(stderr io.Reader) {
 
 // freebsd ppp log parser
 // TODO: talk directly via pppctl
-func (l *vpnLink) pppLogParser() {
+func (l *vpnLink) PppLogParser() {
 	t, err := tail.TailFile("/var/log/ppp.log", tail.Config{
 		Location: &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd},
 		Follow:   true,
@@ -149,7 +151,7 @@ func (l *vpnLink) pppLogParser() {
 			str = v[1]
 		}
 		if strings.Contains(str, "Using interface") {
-			if v := strings.FieldsFunc(strings.TrimSpace(str), splitFunc); len(v) > 0 {
+			if v := strings.FieldsFunc(strings.TrimSpace(str), util.SplitFunc); len(v) > 0 {
 				l.nameChan <- v[len(v)-1]
 			}
 		}

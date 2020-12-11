@@ -8,7 +8,7 @@ import (
 	"os/user"
 	"runtime"
 
-	"github.com/kayrus/gof5/pkg"
+	"github.com/kayrus/gof5/pkg/client"
 )
 
 var Version = "dev"
@@ -51,8 +51,7 @@ func main() {
 		log.Fatalf("Program must be executed under root")
 	}
 
-	pkg.SetDebug(debug)
-	err := pkg.Connect(server, username, password, sessionID, closeSession, sel)
+	err := client.Connect(server, username, password, sessionID, closeSession, sel, debug)
 	if err != nil {
 		log.Fatal(err)
 	}

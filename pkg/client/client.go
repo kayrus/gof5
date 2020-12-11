@@ -1,4 +1,4 @@
-package pkg
+package client
 
 import (
 	"bytes"
@@ -22,6 +22,10 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/kayrus/gof5/pkg/config"
+	"github.com/kayrus/gof5/pkg/cookie"
+	"github.com/kayrus/gof5/pkg/link"
+
 	"github.com/creack/pty"
 	"github.com/howeyc/gopass"
 	"github.com/manifoldco/promptui"
@@ -29,7 +33,6 @@ import (
 
 const (
 	userAgent        = "Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.1a2pre) Gecko/2008073000 Shredder/3.0a2pre ThunderBrowse/3.2.1.8"
-	userAgentVPN     = "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; Trident/6.0; F5 Networks Client)"
 	androidUserAgent = "Mozilla/5.0 (Linux; Android 10; SM-G975F Build/QP1A.190711.020) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/81.0.4044.138 Mobile Safari/537.36 EdgeClient/3.0.7 F5Access/3.0.7"
 )
 
@@ -48,8 +51,8 @@ func checkRedirect(c *http.Client) func(*http.Request, []*http.Request) error {
 	}
 }
 
-func generateClientData(cData clientData) (string, error) {
-	info := agentInfo{
+func generateClientData(cData config.ClientData) (string, error) {
+	info := config.AgentInfo{
 		Type:       "standalone",
 		Version:    "2.0",
 		Platform:   "Linux",
@@ -132,7 +135,7 @@ func loginSignature(c *http.Client, server string, _, _ *string) error {
 		return err
 	}
 
-	var cData clientData
+	var cData config.ClientData
 	dec := xml.NewDecoder(resp.Body)
 	err = dec.Decode(&cData)
 	resp.Body.Close()
@@ -248,7 +251,7 @@ func login(c *http.Client, server string, username, password *string) error {
 }
 
 func parseProfile(reader io.ReadCloser) (string, error) {
-	var profiles Profiles
+	var profiles config.Profiles
 	dec := xml.NewDecoder(reader)
 	err := dec.Decode(&profiles)
 	reader.Close()
@@ -257,6 +260,9 @@ func parseProfile(reader io.ReadCloser) (string, error) {
 	}
 
 	if profiles.Type == "VPN" {
+		if len(profiles.Favorites) != 1 {
+			return "", fmt.Errorf("multiple VPN profiles found (FIXME)")
+		}
 		for _, v := range profiles.Favorites {
 			return v.Params, nil
 		}
@@ -274,7 +280,7 @@ func getProfiles(c *http.Client, server string) (*http.Response, error) {
 	return c.Do(req)
 }
 
-func getConnectionOptions(c *http.Client, server string, profile string) (*Favorite, error) {
+func getConnectionOptions(c *http.Client, server string, profile string) (*config.Favorite, error) {
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s/vdesk/vpn/connect.php3?%s&outform=xml&client_version=2.0", server, profile), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build a request: %s", err)
@@ -286,7 +292,7 @@ func getConnectionOptions(c *http.Client, server string, profile string) (*Favor
 	}
 
 	// parse profile
-	var favorite Favorite
+	var favorite config.Favorite
 	dec := xml.NewDecoder(resp.Body)
 	err = dec.Decode(&favorite)
 	resp.Body.Close()
@@ -320,7 +326,7 @@ func getServersList(c *http.Client, server string) (*url.URL, error) {
 		return nil, fmt.Errorf("failed to request servers list: %s", err)
 	}
 
-	var s preConfigProfile
+	var s config.PreConfigProfile
 	dec := xml.NewDecoder(resp.Body)
 	err = dec.Decode(&s)
 	resp.Body.Close()
@@ -354,7 +360,7 @@ func getServersList(c *http.Client, server string) (*url.URL, error) {
 	return u, nil
 }
 
-func Connect(server, username, password, sessionID string, closeSession, sel bool) error {
+func Connect(server, username, password, sessionID string, closeSession, sel, debug bool) error {
 	u, err := url.Parse(server)
 	if err != nil {
 		return fmt.Errorf("failed to parse server hostname: %s", err)
@@ -377,7 +383,7 @@ func Connect(server, username, password, sessionID string, closeSession, sel boo
 	server = u.Host
 
 	// read config
-	config, err := readConfig()
+	cfg, err := config.ReadConfig(debug)
 	if err != nil {
 		return err
 	}
@@ -393,13 +399,13 @@ func Connect(server, username, password, sessionID string, closeSession, sel boo
 	if debug {
 		client.Transport = &RoundTripper{
 			Rt: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: config.InsecureTLS},
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: cfg.InsecureTLS},
 			},
 			Logger: &logger{},
 		}
 	} else {
 		client.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: config.InsecureTLS},
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: cfg.InsecureTLS},
 		}
 	}
 
@@ -413,7 +419,7 @@ func Connect(server, username, password, sessionID string, closeSession, sel boo
 	}
 
 	// read cookies
-	readCookies(client, u, config, sessionID)
+	cookie.ReadCookies(client, u, cfg, sessionID)
 
 	if len(client.Jar.Cookies(u)) == 0 {
 		// need to login
@@ -458,64 +464,64 @@ func Connect(server, username, password, sessionID string, closeSession, sel boo
 	}
 
 	// read config, returned by F5
-	config.f5Config, err = getConnectionOptions(client, server, profile)
+	cfg.F5Config, err = getConnectionOptions(client, server, profile)
 	if err != nil {
 		return fmt.Errorf("failed to get VPN connection options: %s", err)
 	}
 
 	// save cookies
-	if err := saveCookies(client, u, config); err != nil {
+	if err := cookie.SaveCookies(client, u, cfg); err != nil {
 		return fmt.Errorf("failed to save cookies: %s", err)
 	}
 
 	// TLS
-	link, err := initConnection(server, config)
+	l, err := link.InitConnection(server, cfg)
 	if err != nil {
 		return err
 	}
-	defer link.conn.Close()
+	defer l.HTTPConn.Close()
 
 	var cmd *exec.Cmd
-	if config.Driver == "pppd" {
+	if cfg.Driver == "pppd" {
 		// VPN
-		if config.IPv6 && bool(config.f5Config.Object.IPv6) {
-			config.PPPdArgs = append(config.PPPdArgs,
+		if cfg.IPv6 && bool(cfg.F5Config.Object.IPv6) {
+			cfg.PPPdArgs = append(cfg.PPPdArgs,
 				"ipv6cp-accept-local",
 				"ipv6cp-accept-remote",
 				"+ipv6",
 			)
 		} else {
-			config.PPPdArgs = append(config.PPPdArgs,
+			cfg.PPPdArgs = append(cfg.PPPdArgs,
 				// TODO: clarify why it doesn't work
 				"noipv6", // Unsupported protocol 'IPv6 Control Protocol' (0x8057) received
 			)
 		}
 		if debug {
-			config.PPPdArgs = append(config.PPPdArgs,
+			cfg.PPPdArgs = append(cfg.PPPdArgs,
 				"debug",
 				"kdebug", "1",
 			)
-			log.Printf("pppd args: %q", config.PPPdArgs)
+			log.Printf("pppd args: %q", cfg.PPPdArgs)
 		}
 
 		switch runtime.GOOS {
 		default:
-			cmd = exec.Command("pppd", config.PPPdArgs...)
+			cmd = exec.Command("pppd", cfg.PPPdArgs...)
 		case "freebsd":
 			cmd = exec.Command("ppp", "-direct")
 		}
 	}
 
 	// error handler
-	go link.errorHandler()
+	go l.ErrorHandler()
 
 	// set routes and DNS
-	go link.waitAndConfig(config)
+	go l.WaitAndConfig(cfg)
 
-	if config.Driver == "pppd" {
+	if cfg.Driver == "pppd" {
 		if runtime.GOOS == "freebsd" {
 			// pppd log parser
-			go link.pppLogParser()
+			go l.PppLogParser()
 		} else {
 			/*
 				// read file descriptor 3
@@ -527,7 +533,7 @@ func Connect(server, username, password, sessionID string, closeSession, sel boo
 				return fmt.Errorf("cannot allocate stderr pipe: %s", err)
 			}
 			// pppd log parser
-			go link.pppdLogParser(stderr)
+			go l.PppdLogParser(stderr)
 		}
 
 		pppd, err := pty.Start(cmd)
@@ -536,27 +542,27 @@ func Connect(server, username, password, sessionID string, closeSession, sel boo
 		}
 
 		// terminate on pppd termination
-		go link.pppdWait(cmd)
+		go l.PppdWait(cmd)
 
 		// pppd http->tun go routine
-		go link.pppdHTTPToTun(pppd)
+		go l.PppdHTTPToTun(pppd)
 
 		// pppd tun->http go routine
-		go link.pppdTunToHTTP(pppd)
+		go l.PppdTunToHTTP(pppd)
 	} else {
 		// http->tun go routine
-		go link.httpToTun()
+		go l.HttpToTun()
 
 		// tun->http go routine
-		go link.tunToHTTP()
+		go l.TunToHTTP()
 	}
 
-	signal.Notify(link.termChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGPIPE, syscall.SIGHUP)
-	<-link.termChan
+	signal.Notify(l.TermChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGPIPE, syscall.SIGHUP)
+	<-l.TermChan
 
-	link.restoreConfig(config)
+	l.RestoreConfig(cfg)
 
-	if config.Driver == "pppd" {
+	if cfg.Driver == "pppd" {
 		// TODO: properly wait for pppd process on ctrl+c
 		cmd.Wait()
 	}
@@ -567,5 +573,5 @@ func Connect(server, username, password, sessionID string, closeSession, sel boo
 		closeVPNSession(client, server)
 	}
 
-	return link.ret
+	return l.Ret
 }

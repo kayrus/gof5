@@ -1,4 +1,4 @@
-package pkg
+package config
 
 import (
 	"encoding/base64"
@@ -10,131 +10,13 @@ import (
 	"os/user"
 	"strings"
 
+	"github.com/kayrus/gof5/pkg/util"
+
 	"github.com/IBM/netaddr"
 )
 
-var (
-	debug            bool
-	supportedDrivers = []string{"wireguard", "water", "pppd"}
-)
-
-func SetDebug(d bool) {
-	debug = d
-}
-
-type Session struct {
-	Token         string `xml:"token"`
-	Version       string `xml:"version"`
-	RedirectURL   string `xml:"redirect_url"`
-	MaxClientData string `xml:"max_client_data"`
-}
-
-// Profiles list
-type Profiles struct {
-	Type      string         `xml:"type,attr"`
-	Limited   string         `xml:"limited,attr"`
-	Favorites []FavoriteItem `xml:"favorite"`
-}
-
-type FavoriteItem struct {
-	ID      string `xml:"id,attr"`
-	Caption string `xml:"caption"`
-	Name    string `xml:"name"`
-	Params  string `xml:"params"`
-}
-
-type Favorite struct {
-	Object Object `xml:"object"`
-}
-
-type Bool bool
-
-func (b Bool) String() string {
-	if b {
-		return "yes"
-	}
-	return "no"
-}
-
-func (b Bool) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
-	return e.EncodeElement(b.String(), start)
-}
-
-func strToBool(s string) (Bool, error) {
-	switch v := strings.ToLower(s); v {
-	case "yes":
-		return true, nil
-	case "no":
-		return false, nil
-	}
-	return false, fmt.Errorf("cannot parse boolean: %s", s)
-}
-
-type Hostname string
-
-func (h Hostname) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
-	return e.EncodeElement(base64.StdEncoding.EncodeToString([]byte(h)), start)
-}
-
-// TODO: unmarshal for bool
-
-type Object struct {
-	SessionID                      string         `xml:"Session_ID"`
-	IPv4                           Bool           `xml:"IPV4_0"`
-	IPv6                           Bool           `xml:"IPV6_0"`
-	UrZ                            string         `xml:"ur_Z"`
-	HDLCFraming                    Bool           `xml:"-"`
-	Host                           string         `xml:"host0"`
-	Port                           string         `xml:"port0"`
-	TunnelHost                     string         `xml:"tunnel_host0"`
-	TunnelPort                     string         `xml:"tunnel_port0"`
-	Add2Hosts                      string         `xml:"Add2Hosts0"`
-	DNSRegisterConnection          int            `xml:"DNSRegisterConnection0"`
-	DNSUseDNSSuffixForRegistration int            `xml:"DNSUseDNSSuffixForRegistration0"`
-	SplitTunneling                 int            `xml:"SplitTunneling0"`
-	DNSSPlit                       string         `xml:"DNS_SPLIT0"`
-	TunnelDTLS                     bool           `xml:"tunnel_dtls"`
-	TunnelPortDTLS                 string         `xml:"tunnel_port_dtls"`
-	AllowLocalSubnetAccess         bool           `xml:"AllowLocalSubnetAccess0"`
-	AllowLocalDNSServersAccess     bool           `xml:"AllowLocalDNSServersAccess0"`
-	AllowLocalDHCPAccess           bool           `xml:"AllowLocalDHCPAccess0"`
-	DNS                            []net.IP       `xml:"-"`
-	DNS6                           []net.IP       `xml:"-"`
-	ExcludeSubnets                 []*net.IPNet   `xml:"-"`
-	Routes                         *netaddr.IPSet `xml:"-"`
-	ExcludeSubnets6                []*net.IPNet   `xml:"-"`
-	Routes6                        *netaddr.IPSet `xml:"-"`
-	TrafficControl                 TrafficControl `xml:"-"`
-	DNSSuffix                      []string       `xml:"-"`
-}
-
-type TrafficControl struct {
-	Flow []Flow `xml:"flow"`
-}
-
-type Flow struct {
-	Name    string `xml:"name,attr"`
-	Rate    string `xml:"rate,attr"`
-	Ceiling string `xml:"ceiling,attr"`
-	Mode    string `xml:"mode,attr"`
-	Burst   string `xml:"burst,attr"`
-	Type    string `xml:"type,attr"`
-	Via     string `xml:"via,attr"`
-	Filter  Filter `xml:"filter"`
-}
-
-type Filter struct {
-	Proto   string `xml:"proto,attr"`
-	Src     string `xml:"src,attr"`
-	SrcMask string `xml:"src_mask,attr"`
-	SrcPort string `xml:"src_port,attr"`
-	Dst     string `xml:"dst,attr"`
-	DstMask string `xml:"dst_mask,attr"`
-	DstPort string `xml:"dst_port,attr"`
-}
-
 type Config struct {
-	// defaults to true
+	Debug       bool         `yanl:"-"`
 	Driver      string       `yaml:"driver"`
 	ListenDNS   net.IP       `yaml:"-"`
 	DNS         []string     `yaml:"dns"`
@@ -150,20 +32,18 @@ type Config struct {
 	DNSServers []net.IP `yaml:"-"`
 	// internal parameters
 	// current user or sudo user
-	user *user.User
+	User *user.User `yaml:"-"`
 	// config path
-	path string
+	Path string `yaml:"-"`
 	// current user or sudo user UID
-	uid int
+	Uid int `yaml:"-"`
 	// current user or sudo user GID
-	gid int
+	Gid int `yaml:"-"`
 	// Config, returned by F5
-	f5Config *Favorite
+	F5Config *Favorite `yaml:"-"`
 	// save /etc/resolv.conf
-	resolvConf []byte
+	ResolvConf []byte `yaml:"-"`
 }
-
-type Cookies map[string][]string
 
 func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type tmp Config
@@ -234,58 +114,88 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-func splitFunc(c rune) bool {
-	return c == ' '
+type Favorite struct {
+	Object Object `xml:"object"`
 }
 
-func processIPs(ips string, length int) []net.IP {
-	if v := strings.FieldsFunc(strings.TrimSpace(ips), splitFunc); len(v) > 0 {
-		var t []net.IP
-		for _, v := range v {
-			v := net.ParseIP(v)
-			if length == net.IPv4len {
-				if v.To4() != nil {
-					t = append(t, v)
-				}
-			} else if length == net.IPv6len {
-				t = append(t, v.To16())
-			}
-		}
-		return t
+type Bool bool
+
+func (b Bool) String() string {
+	if b {
+		return "yes"
 	}
-	return nil
+	return "no"
 }
 
-func processCIDRs(cidrs string, length int) []*net.IPNet {
-	if v := strings.FieldsFunc(strings.TrimSpace(cidrs), splitFunc); len(v) > 0 {
-		var t []*net.IPNet
-		for _, v := range v {
-			// parse 1.2.3.4/255.255.255.0 format
-			if v := strings.Split(v, "/"); len(v) == 2 {
-				ip := net.ParseIP(v[0])
-				mask := net.ParseIP(v[1])
-				if ip == nil || mask == nil {
-					log.Printf("Cannot parse %q CIDR", v)
-					continue
-				}
-				if length == net.IPv4len {
-					t = append(t, &net.IPNet{
-						IP:   ip.To4(),
-						Mask: net.IPMask(mask.To4()),
-					})
-				} else if length == net.IPv6len {
-					t = append(t, &net.IPNet{
-						IP:   ip.To16(),
-						Mask: net.IPMask(mask.To16()),
-					})
-				}
-				continue
-			}
-			log.Printf("Cannot parse %q CIDR", v)
-		}
-		return t
+func (b Bool) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	return e.EncodeElement(b.String(), start)
+}
+
+func strToBool(s string) (Bool, error) {
+	switch v := strings.ToLower(s); v {
+	case "yes":
+		return true, nil
+	case "no":
+		return false, nil
 	}
-	return nil
+	return false, fmt.Errorf("cannot parse boolean: %s", s)
+}
+
+// TODO: unmarshal for bool
+
+type Object struct {
+	SessionID                      string         `xml:"Session_ID"`
+	IPv4                           Bool           `xml:"IPV4_0"`
+	IPv6                           Bool           `xml:"IPV6_0"`
+	UrZ                            string         `xml:"ur_Z"`
+	HDLCFraming                    Bool           `xml:"-"`
+	Host                           string         `xml:"host0"`
+	Port                           string         `xml:"port0"`
+	TunnelHost                     string         `xml:"tunnel_host0"`
+	TunnelPort                     string         `xml:"tunnel_port0"`
+	Add2Hosts                      string         `xml:"Add2Hosts0"`
+	DNSRegisterConnection          int            `xml:"DNSRegisterConnection0"`
+	DNSUseDNSSuffixForRegistration int            `xml:"DNSUseDNSSuffixForRegistration0"`
+	SplitTunneling                 int            `xml:"SplitTunneling0"`
+	DNSSPlit                       string         `xml:"DNS_SPLIT0"`
+	TunnelDTLS                     bool           `xml:"tunnel_dtls"`
+	TunnelPortDTLS                 string         `xml:"tunnel_port_dtls"`
+	AllowLocalSubnetAccess         bool           `xml:"AllowLocalSubnetAccess0"`
+	AllowLocalDNSServersAccess     bool           `xml:"AllowLocalDNSServersAccess0"`
+	AllowLocalDHCPAccess           bool           `xml:"AllowLocalDHCPAccess0"`
+	DNS                            []net.IP       `xml:"-"`
+	DNS6                           []net.IP       `xml:"-"`
+	ExcludeSubnets                 []*net.IPNet   `xml:"-"`
+	Routes                         *netaddr.IPSet `xml:"-"`
+	ExcludeSubnets6                []*net.IPNet   `xml:"-"`
+	Routes6                        *netaddr.IPSet `xml:"-"`
+	TrafficControl                 TrafficControl `xml:"-"`
+	DNSSuffix                      []string       `xml:"-"`
+}
+
+type TrafficControl struct {
+	Flow []Flow `xml:"flow"`
+}
+
+type Flow struct {
+	Name    string `xml:"name,attr"`
+	Rate    string `xml:"rate,attr"`
+	Ceiling string `xml:"ceiling,attr"`
+	Mode    string `xml:"mode,attr"`
+	Burst   string `xml:"burst,attr"`
+	Type    string `xml:"type,attr"`
+	Via     string `xml:"via,attr"`
+	Filter  Filter `xml:"filter"`
+}
+
+type Filter struct {
+	Proto   string `xml:"proto,attr"`
+	Src     string `xml:"src,attr"`
+	SrcMask string `xml:"src_mask,attr"`
+	SrcPort string `xml:"src_port,attr"`
+	Dst     string `xml:"dst,attr"`
+	DstMask string `xml:"dst_mask,attr"`
+	DstPort string `xml:"dst_port,attr"`
 }
 
 func parseCIDR(s string) (*net.IPNet, error) {
@@ -297,10 +207,10 @@ func parseCIDR(s string) (*net.IPNet, error) {
 			return nil, fmt.Errorf("cannot parse %s CIDR: %s", s, err)
 		}
 		// normalize IP
-		cidr = getNet(ip)
+		cidr = util.GetNet(ip)
 	} else {
 		// normalize CIDR
-		cidr = getNet(cidr)
+		cidr = util.GetNet(cidr)
 	}
 
 	if cidr == nil {
@@ -308,49 +218,6 @@ func parseCIDR(s string) (*net.IPNet, error) {
 	}
 
 	return cidr, nil
-}
-
-func inverseCIDRs4(exclude []*net.IPNet) *netaddr.IPSet {
-	// initialize an empty IPSet
-	ipSet4 := &netaddr.IPSet{}
-
-	all := &net.IPNet{
-		IP:   net.IPv4zero.To4(),
-		Mask: net.CIDRMask(0, 32),
-	}
-	ipSet4.InsertNet(all)
-
-	// remove reserved addresses (rfc8190)
-	soft := &net.IPNet{
-		IP:   net.IPv4zero.To4(),
-		Mask: net.CIDRMask(8, 32),
-	}
-	ipSet4.RemoveNet(soft)
-
-	local := &net.IPNet{
-		IP:   net.IPv4(127, 0, 0, 0).To4(),
-		Mask: net.CIDRMask(8, 32),
-	}
-	ipSet4.RemoveNet(local)
-
-	unicast := &net.IPNet{
-		IP:   net.IPv4(169, 254, 0, 0).To4(),
-		Mask: net.CIDRMask(16, 32),
-	}
-	ipSet4.RemoveNet(unicast)
-
-	multicast := &net.IPNet{
-		IP:   net.IPv4(224, 0, 0, 0).To4(),
-		Mask: net.CIDRMask(4, 32),
-	}
-	ipSet4.RemoveNet(multicast)
-
-	for _, v := range exclude {
-		ipSet4.RemoveNet(v)
-	}
-
-	// get a routes list
-	return ipSet4
 }
 
 func (o *Object) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
@@ -400,7 +267,127 @@ func (o *Object) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	return nil
 }
 
-type agentInfo struct {
+type Session struct {
+	Token         string `xml:"token"`
+	Version       string `xml:"version"`
+	RedirectURL   string `xml:"redirect_url"`
+	MaxClientData string `xml:"max_client_data"`
+}
+
+// Profiles list
+type Profiles struct {
+	Type      string         `xml:"type,attr"`
+	Limited   string         `xml:"limited,attr"`
+	Favorites []FavoriteItem `xml:"favorite"`
+}
+
+type FavoriteItem struct {
+	ID      string `xml:"id,attr"`
+	Caption string `xml:"caption"`
+	Name    string `xml:"name"`
+	Params  string `xml:"params"`
+}
+
+type Hostname string
+
+func (h Hostname) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	return e.EncodeElement(base64.StdEncoding.EncodeToString([]byte(h)), start)
+}
+
+func processIPs(ips string, length int) []net.IP {
+	if v := strings.FieldsFunc(strings.TrimSpace(ips), util.SplitFunc); len(v) > 0 {
+		var t []net.IP
+		for _, v := range v {
+			v := net.ParseIP(v)
+			if length == net.IPv4len {
+				if v.To4() != nil {
+					t = append(t, v)
+				}
+			} else if length == net.IPv6len {
+				t = append(t, v.To16())
+			}
+		}
+		return t
+	}
+	return nil
+}
+
+func processCIDRs(cidrs string, length int) []*net.IPNet {
+	if v := strings.FieldsFunc(strings.TrimSpace(cidrs), util.SplitFunc); len(v) > 0 {
+		var t []*net.IPNet
+		for _, v := range v {
+			// parse 1.2.3.4/255.255.255.0 format
+			if v := strings.Split(v, "/"); len(v) == 2 {
+				ip := net.ParseIP(v[0])
+				mask := net.ParseIP(v[1])
+				if ip == nil || mask == nil {
+					log.Printf("Cannot parse %q CIDR", v)
+					continue
+				}
+				if length == net.IPv4len {
+					t = append(t, &net.IPNet{
+						IP:   ip.To4(),
+						Mask: net.IPMask(mask.To4()),
+					})
+				} else if length == net.IPv6len {
+					t = append(t, &net.IPNet{
+						IP:   ip.To16(),
+						Mask: net.IPMask(mask.To16()),
+					})
+				}
+				continue
+			}
+			log.Printf("Cannot parse %q CIDR", v)
+		}
+		return t
+	}
+	return nil
+}
+
+func inverseCIDRs4(exclude []*net.IPNet) *netaddr.IPSet {
+	// initialize an empty IPSet
+	ipSet4 := &netaddr.IPSet{}
+
+	all := &net.IPNet{
+		IP:   net.IPv4zero.To4(),
+		Mask: net.CIDRMask(0, 32),
+	}
+	ipSet4.InsertNet(all)
+
+	// remove reserved addresses (rfc8190)
+	soft := &net.IPNet{
+		IP:   net.IPv4zero.To4(),
+		Mask: net.CIDRMask(8, 32),
+	}
+	ipSet4.RemoveNet(soft)
+
+	local := &net.IPNet{
+		IP:   net.IPv4(127, 0, 0, 0).To4(),
+		Mask: net.CIDRMask(8, 32),
+	}
+	ipSet4.RemoveNet(local)
+
+	unicast := &net.IPNet{
+		IP:   net.IPv4(169, 254, 0, 0).To4(),
+		Mask: net.CIDRMask(16, 32),
+	}
+	ipSet4.RemoveNet(unicast)
+
+	multicast := &net.IPNet{
+		IP:   net.IPv4(224, 0, 0, 0).To4(),
+		Mask: net.CIDRMask(4, 32),
+	}
+	ipSet4.RemoveNet(multicast)
+
+	for _, v := range exclude {
+		ipSet4.RemoveNet(v)
+	}
+
+	// get a routes list
+	return ipSet4
+}
+
+type AgentInfo struct {
 	XMLName              xml.Name `xml:"agent_info"`
 	Type                 string   `xml:"type"`
 	Version              string   `xml:"version"`
@@ -427,7 +414,7 @@ type agentInfo struct {
 	DevicePasscodeSet    *Bool    `xml:"device_passcode_set,omitempty"`
 }
 
-type clientData struct {
+type ClientData struct {
 	XMLName       xml.Name `xml:"data"`
 	Token         string   `xml:"token"`
 	Version       string   `xml:"version"`
@@ -435,7 +422,7 @@ type clientData struct {
 	MaxClientData int      `xml:"max_client_data"`
 }
 
-type preConfigProfile struct {
+type PreConfigProfile struct {
 	XMLName   xml.Name         `xml:"PROFILE"`
 	Version   string           `xml:"VERSION,attr"`
 	Servers   []Server         `xml:"SERVERS>SITEM"`
@@ -531,13 +518,4 @@ func (o *Update) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	}
 
 	return nil
-}
-
-func strSliceContains(haystack []string, needle string) bool {
-	for _, s := range haystack {
-		if s == needle {
-			return true
-		}
-	}
-	return false
 }

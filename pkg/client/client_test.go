@@ -1,12 +1,14 @@
-package pkg
+package client
 
 import (
 	"encoding/xml"
 	"testing"
+
+	"github.com/kayrus/gof5/pkg/config"
 )
 
 func TestSignature(t *testing.T) {
-	s, err := generateClientData(clientData{Token: "1"})
+	s, err := generateClientData(config.ClientData{Token: "1"})
 	if err != nil {
 		t.Errorf("Signature is wrong: %s", err)
 	}
@@ -20,7 +22,7 @@ func TestSignature(t *testing.T) {
 func TestUnmarshal(t *testing.T) {
 	// parse https://f5.com/pre/config.php
 	b := []byte(`<PROFILE VERSION="2.0"><SERVERS><SITEM><ADDRESS>https://f5-1.com</ADDRESS><ALIAS>One</ALIAS></SITEM><SITEM><ADDRESS>https://f5-2.com</ADDRESS><ALIAS>Two</ALIAS></SITEM></SERVERS><SESSION LIMITED="YES"><SAVEONEXIT>YES</SAVEONEXIT><SAVEPASSWORDS>NO</SAVEPASSWORDS><REUSEWINLOGONCREDS>NO</REUSEWINLOGONCREDS><REUSEWINLOGONSESSION>NO</REUSEWINLOGONSESSION><PASSWORD_POLICY><MODE>DISK</MODE><TIMEOUT>240</TIMEOUT></PASSWORD_POLICY><UPDATE><MODE>YES</MODE></UPDATE></SESSION><LOCATIONS><CORPORATE><DNSSUFFIX>corp.int</DNSSUFFIX><DNSSUFFIX>corp</DNSSUFFIX></CORPORATE></LOCATIONS></PROFILE>`)
-	var s preConfigProfile
+	var s config.PreConfigProfile
 	if err := xml.Unmarshal(b, &s); err != nil {
 		t.Errorf("failed to unmarshal a response: %s", err)
 	}
