@@ -3,11 +3,9 @@
 github.com/IBM/netaddr
 # github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
 github.com/chzyer/readline
-# github.com/creack/pty v1.1.12-0.20200804180658-a6c0a376f1d0
+# github.com/creack/pty v1.1.11
 ## explicit
 github.com/creack/pty
-# github.com/fsnotify/fsnotify v1.4.9
-## explicit
 # github.com/howeyc/gopass v0.0.0-20190910152052-7cb4b85ec19c
 ## explicit
 github.com/howeyc/gopass
@@ -18,7 +16,7 @@ github.com/hpcloud/tail/ratelimiter
 github.com/hpcloud/tail/util
 github.com/hpcloud/tail/watch
 github.com/hpcloud/tail/winfile
-# github.com/jackpal/gateway v1.0.7-0.20200819042550-bdc30bb4b0a3
+# github.com/jackpal/gateway v1.0.6
 ## explicit
 github.com/jackpal/gateway
 # github.com/juju/ansiterm v0.0.0-20180109212912-720a0952cc2a
@@ -26,7 +24,7 @@ github.com/juju/ansiterm
 github.com/juju/ansiterm/tabwriter
 # github.com/lunixbochs/vtclean v0.0.0-20180621232353-2d01aacdc34a
 github.com/lunixbochs/vtclean
-# github.com/manifoldco/promptui v0.7.0
+# github.com/manifoldco/promptui v0.8.0
 ## explicit
 github.com/manifoldco/promptui
 github.com/manifoldco/promptui/list
@@ -35,22 +33,23 @@ github.com/manifoldco/promptui/screenbuf
 github.com/mattn/go-colorable
 # github.com/mattn/go-isatty v0.0.4
 github.com/mattn/go-isatty
-# github.com/miekg/dns v1.1.29
+# github.com/miekg/dns v1.1.35
 ## explicit
 github.com/miekg/dns
-# github.com/pion/dtls/v2 v2.0.0
+# github.com/pion/dtls/v2 v2.0.4
 ## explicit
 github.com/pion/dtls/v2
 github.com/pion/dtls/v2/internal/closer
 github.com/pion/dtls/v2/internal/net/connctx
-github.com/pion/dtls/v2/internal/net/udp
 github.com/pion/dtls/v2/pkg/crypto/ccm
 # github.com/pion/logging v0.2.2
 github.com/pion/logging
-# github.com/pion/transport v0.10.0
+# github.com/pion/transport v0.10.1
 github.com/pion/transport/deadline
 github.com/pion/transport/packetio
 github.com/pion/transport/replaydetector
+# github.com/pion/udp v0.1.0
+github.com/pion/udp
 # github.com/sigurn/crc16 v0.0.0-20160107003519-da416fad5162
 github.com/sigurn/crc16
 # github.com/sigurn/utils v0.0.0-20151230205143-f19e41f79f8f
@@ -67,49 +66,44 @@ github.com/vishvananda/netns
 # github.com/zaninime/go-hdlc v1.1.1
 ## explicit
 github.com/zaninime/go-hdlc
-# golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
-golang.org/x/crypto/blake2s
+# golang.org/x/crypto v0.0.0-20201124201722-c8d3bf9c5392
 golang.org/x/crypto/cryptobyte
 golang.org/x/crypto/cryptobyte/asn1
 golang.org/x/crypto/curve25519
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/ed25519/internal/edwards25519
 golang.org/x/crypto/ssh/terminal
-# golang.org/x/net v0.0.0-20200904194848-62affa334b73
+# golang.org/x/net v0.0.0-20201216054612-986b41b23924
 ## explicit
 golang.org/x/net/bpf
 golang.org/x/net/internal/iana
 golang.org/x/net/internal/socket
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
-# golang.org/x/sys v0.0.0-20200501145240-bc7a7d42d5c3
-golang.org/x/sys/cpu
+# golang.org/x/sys v0.0.0-20201126233918-771906719818
 golang.org/x/sys/internal/unsafeheader
+golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-# golang.org/x/text v0.3.2
-golang.org/x/text/transform
-golang.org/x/text/unicode/norm
-# golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543
+# golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1
+golang.org/x/term
+# golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
-# golang.zx2c4.com/wireguard v0.0.20200321-0.20200907165149-0cfa3314ee27
+# golang.zx2c4.com/wireguard v0.0.20201119-0.20201218191847-42de652c21a1
 ## explicit
 golang.zx2c4.com/wireguard/rwcancel
 golang.zx2c4.com/wireguard/tun
 golang.zx2c4.com/wireguard/tun/wintun
-golang.zx2c4.com/wireguard/tun/wintun/iphlpapi
-golang.zx2c4.com/wireguard/tun/wintun/namespaceapi
-golang.zx2c4.com/wireguard/tun/wintun/nci
-golang.zx2c4.com/wireguard/tun/wintun/registry
-golang.zx2c4.com/wireguard/tun/wintun/setupapi
+golang.zx2c4.com/wireguard/tun/wintun/memmod
+golang.zx2c4.com/wireguard/tun/wintun/resource
 # gopkg.in/fsnotify.v1 v1.4.7
 ## explicit
 gopkg.in/fsnotify.v1
 # gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
 ## explicit
 gopkg.in/tomb.v1
-# gopkg.in/yaml.v2 v2.3.0
+# gopkg.in/yaml.v2 v2.4.0
 ## explicit
 gopkg.in/yaml.v2

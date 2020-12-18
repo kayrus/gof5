@@ -20,19 +20,6 @@ import (
 
 const utunControlName = "com.apple.net.utun_control"
 
-// _CTLIOCGINFO value derived from /usr/include/sys/{kern_control,ioccom}.h
-const _CTLIOCGINFO = (0x40000000 | 0x80000000) | ((100 & 0x1fff) << 16) | uint32(byte('N'))<<8 | 3
-
-// sockaddr_ctl specifeid in /usr/include/sys/kern_control.h
-type sockaddrCtl struct {
-	scLen      uint8
-	scFamily   uint8
-	ssSysaddr  uint16
-	scID       uint32
-	scUnit     uint32
-	scReserved [5]uint32
-}
-
 type NativeTun struct {
 	name        string
 	tunFile     *os.File
@@ -40,8 +27,6 @@ type NativeTun struct {
 	errors      chan error
 	routeSocket int
 }
-
-var sockaddrCtlSize uintptr = 32
 
 func retryInterfaceByIndex(index int) (iface *net.Interface, err error) {
 	for i := 0; i < 20; i++ {
@@ -130,43 +115,21 @@ func CreateTUN(name string, mtu int) (Device, error) {
 		return nil, err
 	}
 
-	var ctlInfo = &struct {
-		ctlID   uint32
-		ctlName [96]byte
-	}{}
-
-	copy(ctlInfo.ctlName[:], []byte(utunControlName))
-
-	_, _, errno := unix.Syscall(
-		unix.SYS_IOCTL,
-		uintptr(fd),
-		uintptr(_CTLIOCGINFO),
-		uintptr(unsafe.Pointer(ctlInfo)),
-	)
-
-	if errno != 0 {
-		return nil, fmt.Errorf("_CTLIOCGINFO: %v", errno)
+	ctlInfo := &unix.CtlInfo{}
+	copy(ctlInfo.Name[:], []byte(utunControlName))
+	err = unix.IoctlCtlInfo(fd, ctlInfo)
+	if err != nil {
+		return nil, fmt.Errorf("IoctlGetCtlInfo: %w", err)
 	}
 
-	sc := sockaddrCtl{
-		scLen:     uint8(sockaddrCtlSize),
-		scFamily:  unix.AF_SYSTEM,
-		ssSysaddr: 2,
-		scID:      ctlInfo.ctlID,
-		scUnit:    uint32(ifIndex) + 1,
+	sc := &unix.SockaddrCtl{
+		ID:   ctlInfo.Id,
+		Unit: uint32(ifIndex) + 1,
 	}
 
-	scPointer := unsafe.Pointer(&sc)
-
-	_, _, errno = unix.RawSyscall(
-		unix.SYS_CONNECT,
-		uintptr(fd),
-		uintptr(scPointer),
-		uintptr(sockaddrCtlSize),
-	)
-
-	if errno != 0 {
-		return nil, fmt.Errorf("SYS_CONNECT: %v", errno)
+	err = unix.Connect(fd, sc)
+	if err != nil {
+		return nil, err
 	}
 
 	err = syscall.SetNonblock(fd, true)
@@ -230,27 +193,19 @@ func CreateTUNFromFile(file *os.File, mtu int) (Device, error) {
 }
 
 func (tun *NativeTun) Name() (string, error) {
-	var ifName struct {
-		name [16]byte
-	}
-	ifNameSize := uintptr(16)
-
-	var errno syscall.Errno
+	var err error
 	tun.operateOnFd(func(fd uintptr) {
-		_, _, errno = unix.Syscall6(
-			unix.SYS_GETSOCKOPT,
-			fd,
+		tun.name, err = unix.GetsockoptString(
+			int(fd),
 			2, /* #define SYSPROTO_CONTROL 2 */
 			2, /* #define UTUN_OPT_IFNAME 2 */
-			uintptr(unsafe.Pointer(&ifName)),
-			uintptr(unsafe.Pointer(&ifNameSize)), 0)
+		)
 	})
 
-	if errno != 0 {
-		return "", fmt.Errorf("SYS_GETSOCKOPT: %v", errno)
+	if err != nil {
+		return "", fmt.Errorf("GetSockoptString: %w", err)
 	}
 
-	tun.name = string(ifName.name[:ifNameSize-1])
 	return tun.name, nil
 }
 
@@ -320,11 +275,6 @@ func (tun *NativeTun) Close() error {
 }
 
 func (tun *NativeTun) setMTU(n int) error {
-
-	// open datagram socket
-
-	var fd int
-
 	fd, err := unix.Socket(
 		unix.AF_INET,
 		unix.SOCK_DGRAM,
@@ -337,29 +287,18 @@ func (tun *NativeTun) setMTU(n int) error {
 
 	defer unix.Close(fd)
 
-	// do ioctl call
-
-	var ifr [32]byte
-	copy(ifr[:], tun.name)
-	*(*uint32)(unsafe.Pointer(&ifr[unix.IFNAMSIZ])) = uint32(n)
-	_, _, errno := unix.Syscall(
-		unix.SYS_IOCTL,
-		uintptr(fd),
-		uintptr(unix.SIOCSIFMTU),
-		uintptr(unsafe.Pointer(&ifr[0])),
-	)
-
-	if errno != 0 {
-		return fmt.Errorf("failed to set MTU on %s", tun.name)
+	var ifr unix.IfreqMTU
+	copy(ifr.Name[:], tun.name)
+	ifr.MTU = int32(n)
+	err = unix.IoctlSetIfreqMTU(fd, &ifr)
+	if err != nil {
+		return fmt.Errorf("failed to set MTU on %s: %w", tun.name, err)
 	}
 
 	return nil
 }
 
 func (tun *NativeTun) MTU() (int, error) {
-
-	// open datagram socket
-
 	fd, err := unix.Socket(
 		unix.AF_INET,
 		unix.SOCK_DGRAM,
@@ -372,19 +311,10 @@ func (tun *NativeTun) MTU() (int, error) {
 
 	defer unix.Close(fd)
 
-	// do ioctl call
-
-	var ifr [64]byte
-	copy(ifr[:], tun.name)
-	_, _, errno := unix.Syscall(
-		unix.SYS_IOCTL,
-		uintptr(fd),
-		uintptr(unix.SIOCGIFMTU),
-		uintptr(unsafe.Pointer(&ifr[0])),
-	)
-	if errno != 0 {
-		return 0, fmt.Errorf("failed to get MTU on %s", tun.name)
+	ifr, err := unix.IoctlGetIfreqMTU(fd, tun.name)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get MTU on %s: %w", tun.name, err)
 	}
 
-	return int(*(*int32)(unsafe.Pointer(&ifr[16]))), nil
+	return int(ifr.MTU), nil
 }

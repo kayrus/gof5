@@ -3,7 +3,7 @@ package dtls
 import (
 	"net"
 
-	"github.com/pion/dtls/v2/internal/net/udp"
+	"github.com/pion/udp"
 )
 
 // Listen creates a DTLS listener
@@ -12,7 +12,20 @@ func Listen(network string, laddr *net.UDPAddr, config *Config) (net.Listener, e
 		return nil, err
 	}
 
-	parent, err := udp.Listen(network, laddr)
+	lc := udp.ListenConfig{
+		AcceptFilter: func(packet []byte) bool {
+			pkts, err := unpackDatagram(packet)
+			if err != nil || len(pkts) < 1 {
+				return false
+			}
+			h := &recordLayerHeader{}
+			if err := h.Unmarshal(pkts[0]); err != nil {
+				return false
+			}
+			return h.contentType == contentTypeHandshake
+		},
+	}
+	parent, err := lc.Listen(network, laddr)
 	if err != nil {
 		return nil, err
 	}
