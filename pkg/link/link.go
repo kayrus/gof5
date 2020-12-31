@@ -40,6 +40,7 @@ type vpnLink struct {
 	name              string
 	routesReady       bool
 	serverRoutesReady bool
+	dnsReady          bool
 	iface             f5Tun
 	errChan           chan error
 	upChan            chan bool
@@ -259,6 +260,7 @@ func (l *vpnLink) WaitAndConfig(cfg *config.Config) {
 		if len(cfg.DNS) > 0 {
 			dns.Start(cfg, l.errChan)
 		}
+		l.dnsReady = true
 	}
 
 	// set routes
@@ -321,7 +323,9 @@ func (l *vpnLink) RestoreConfig(cfg *config.Config) {
 	}()
 
 	if !cfg.DisableDNS {
-		resolv.RestoreDNS(cfg)
+		if l.dnsReady {
+			resolv.RestoreDNS(cfg)
+		}
 	}
 
 	if l.serverRoutesReady {
