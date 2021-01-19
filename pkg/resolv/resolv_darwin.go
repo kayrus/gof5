@@ -14,9 +14,12 @@ import (
 var re = regexp.MustCompile(`\(\d+\)\s(.*)`)
 
 func getInterfaces() ([]string, error) {
-	v, err := exec.Command("networksetup", "-listnetworkserviceorder").Output()
+	args := []string{
+		"-listnetworkserviceorder",
+	}
+	v, err := exec.Command("networksetup", args...).CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get a list of interfaces: %s: %s", v, err)
+		return nil, fmt.Errorf("failed to get a list of interfaces: %s: %s: %s", args, v, err)
 	}
 
 	matches := re.FindAllStringSubmatch(string(v), -1)
@@ -50,23 +53,31 @@ func ConfigureDNS(cfg *config.Config) error {
 			for _, v := range cfg.F5Config.Object.DNS {
 				args = append(args, v.String())
 			}
-			v, err := exec.Command("networksetup", args...).Output()
+			v, err := exec.Command("networksetup", args...).CombinedOutput()
 			if err != nil {
-				return fmt.Errorf("failed to set %q DNS servers on %q: %s: %s", args, iface, v, err)
+				return fmt.Errorf("failed to set %q DNS servers on %q: %s: %s: %s", cfg.F5Config.Object.DNS, iface, args, v, err)
 			}
 		} else {
-			v, err := exec.Command("networksetup", "-setdnsservers", iface, cfg.ListenDNS.String()).Output()
+			args := []string{
+				"-setdnsservers",
+				iface,
+				cfg.ListenDNS.String(),
+			}
+			v, err := exec.Command("networksetup", args...).CombinedOutput()
 			if err != nil {
-				return fmt.Errorf("failed to set %q DNS server on %q: %s: %s", cfg.ListenDNS.String(), iface, v, err)
+				return fmt.Errorf("failed to set %q DNS server on %q: %s: %s: %s", cfg.ListenDNS.String(), iface, args, v, err)
 			}
 		}
 
 		if len(cfg.F5Config.Object.DNSSuffix) > 0 {
-			args := []string{"-setsearchdomains", iface}
+			args := []string{
+				"-setsearchdomains",
+				iface,
+			}
 			args = append(args, cfg.F5Config.Object.DNSSuffix...)
-			v, err := exec.Command("networksetup", args...).Output()
+			v, err := exec.Command("networksetup", args...).CombinedOutput()
 			if err != nil {
-				return fmt.Errorf("failed to set %q DNS search prefix on %q: %s: %s", cfg.F5Config.Object.DNSSuffix, iface, v, err)
+				return fmt.Errorf("failed to set %q DNS search prefix on %q: %s: %s: %s", cfg.F5Config.Object.DNSSuffix, iface, args, v, err)
 			}
 		}
 	}
@@ -82,15 +93,25 @@ func RestoreDNS(cfg *config.Config) {
 	}
 
 	for _, iface := range ifaces {
-		v, err := exec.Command("networksetup", "-setdnsservers", iface, "empty").Output()
+		args := []string{
+			"-setdnsservers",
+			iface,
+			"empty",
+		}
+		v, err := exec.Command("networksetup", args...).CombinedOutput()
 		if err != nil {
-			log.Printf("Failed to restore DNS servers on %q: %s: %s", iface, v, err)
+			log.Printf("Failed to restore DNS servers on %q: %s: %s: %s", iface, args, v, err)
 		}
 
 		if len(cfg.F5Config.Object.DNSSuffix) > 0 {
-			v, err := exec.Command("networksetup", "-setsearchdomains", iface, "empty").Output()
+			args = []string{
+				"-setsearchdomains",
+				iface,
+				"empty",
+			}
+			v, err := exec.Command("networksetup", args...).CombinedOutput()
 			if err != nil {
-				log.Printf("failed to restore DNS search prefix on %q: %s: %s", iface, v, err)
+				log.Printf("failed to restore DNS search prefix on %q: %s: %s: %s", iface, args, v, err)
 			}
 		}
 	}

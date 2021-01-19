@@ -13,17 +13,32 @@ import (
 )
 
 func SetInterface(name string, local, server net.IP, mtu int) error {
-	v, err := exec.Command("ifconfig", name, "mtu", fmt.Sprintf("%d", mtu)).Output()
-	if err != nil {
-		return fmt.Errorf("failed to set MTU: %s: %s", v, err)
+	args := []string{
+		name,
+		"mtu",
+		fmt.Sprintf("%d", mtu),
 	}
-	v, err = exec.Command("ifconfig", name, "inet", util.GetNet(local).String(), server.String()).Output()
+	v, err := exec.Command("ifconfig", args...).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to set ip addr: %s: %s", v, err)
+		return fmt.Errorf("failed to set MTU: %s: %s: %s", args, v, err)
 	}
-	v, err = exec.Command("ifconfig", name, "up").Output()
+	args = []string{
+		name,
+		"inet",
+		util.GetNet(local).String(),
+		server.String(),
+	}
+	v, err = exec.Command("ifconfig", args...).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to bring up interface: %s: %s", v, err)
+		return fmt.Errorf("failed to set ip addr: %s: %s: %s", args, v, err)
+	}
+	args = []string{
+		name,
+		"up",
+	}
+	v, err = exec.Command("ifconfig", args...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to bring up interface: %s: %s: %s", args, v, err)
 	}
 	return nil
 }
@@ -50,9 +65,9 @@ func RouteAdd(dst interface{}, gw net.IP, priority int, name string) error {
 	} else {
 		args = append(args, gw.String())
 	}
-	v, err := exec.Command("route", args...).Output()
+	v, err := exec.Command("route", args...).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to add %s route to %s interface: %s: %s", dst, name, v, err)
+		return fmt.Errorf("failed to add %s route to %s interface: %s: %s: %s", dst, name, args, v, err)
 	}
 	return nil
 }
@@ -69,9 +84,9 @@ func RouteDel(dst interface{}, gw net.IP, priority int, name string) error {
 	} else {
 		args = append(args, gw.String())
 	}
-	v, err := exec.Command("route", args...).Output()
+	v, err := exec.Command("route", args...).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to delete %s route from %s interface: %s: %s", dst, name, v, err)
+		return fmt.Errorf("failed to delete %s route from %s interface: %s: %s: %s", dst, name, args, v, err)
 	}
 	return nil
 }
