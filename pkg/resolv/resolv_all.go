@@ -35,8 +35,10 @@ func ConfigureDNS(cfg *config.Config) error {
 			return fmt.Errorf("failed to write DNS entry into buffer: %s", err)
 		}
 	}
-	if len(cfg.F5Config.Object.DNSSuffix) > 0 {
-		if _, err := dns.WriteString("search " + strings.Join(cfg.F5Config.Object.DNSSuffix, " ") + "\n"); err != nil {
+
+	dnsSearch := append(cfg.DNSSearch, cfg.F5Config.Object.DNSSuffix...)
+	if len(dnsSearch) > 0 {
+		if _, err := dns.WriteString("search " + strings.Join(dnsSearch, " ") + "\n"); err != nil {
 			return fmt.Errorf("failed to write search DNS entry into buffer: %s", err)
 		}
 	}

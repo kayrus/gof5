@@ -69,15 +69,16 @@ func ConfigureDNS(cfg *config.Config) error {
 			}
 		}
 
-		if len(cfg.F5Config.Object.DNSSuffix) > 0 {
+		dnsSearch := append(cfg.DNSSearch, cfg.F5Config.Object.DNSSuffix...)
+		if len(dnsSearch) > 0 {
 			args := []string{
 				"-setsearchdomains",
 				iface,
 			}
-			args = append(args, cfg.F5Config.Object.DNSSuffix...)
+			args = append(args, dnsSearch...)
 			v, err := exec.Command("networksetup", args...).CombinedOutput()
 			if err != nil {
-				return fmt.Errorf("failed to set %q DNS search prefix on %q: %s: %s: %s", cfg.F5Config.Object.DNSSuffix, iface, args, v, err)
+				return fmt.Errorf("failed to set %q DNS search prefix on %q: %s: %s: %s", dnsSearch, iface, args, v, err)
 			}
 		}
 	}

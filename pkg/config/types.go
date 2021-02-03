@@ -30,6 +30,8 @@ type Config struct {
 	// list of DNS local servers
 	// when list is empty, parsed from /etc/resolv.conf
 	DNSServers []net.IP `yaml:"-"`
+	// the list of "search" entries, parsed from the /etc/resolv.conf
+	DNSSearch []string `yaml:"-"`
 	// internal parameters
 	// current user or sudo user
 	User *user.User `yaml:"-"`

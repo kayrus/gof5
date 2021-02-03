@@ -57,6 +57,10 @@ func parseResolvConf(config *Config) {
 					config.DNSServers = append(config.DNSServers, v)
 				}
 			}
+		case "search":
+			for _, v := range f[1:] {
+				config.DNSSearch = append(config.DNSSearch, v)
+			}
 		}
 	}
 }
