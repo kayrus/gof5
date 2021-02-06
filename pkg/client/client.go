@@ -16,12 +16,13 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os/exec"
+	"os"
+	"strconv"
 	"os/signal"
 	"regexp"
 	"runtime"
 	"strings"
 	"syscall"
-
 	"github.com/kayrus/gof5/pkg/config"
 	"github.com/kayrus/gof5/pkg/cookie"
 	"github.com/kayrus/gof5/pkg/link"
@@ -258,12 +259,24 @@ func parseProfile(reader io.ReadCloser) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to unmarshal a response: %s", err)
 	}
-
+	profileFavoriteChoice := 0 
 	if profiles.Type == "VPN" {
-		if len(profiles.Favorites) != 1 {
-			return "", fmt.Errorf("multiple VPN profiles found (FIXME)")
+		if( len(profiles.Favorites) != 1) {
+			profileEnvStr := os.Getenv("PROFILE_FAVORITE")
+			if( len(profileEnvStr)>0 ){
+				profileEnvInt, err := strconv.Atoi(profileEnvStr)
+				if err != nil {
+					return "", fmt.Errorf("Environment variable PROFILE_FAVORITE must be int")
+				    }
+				if (profileEnvInt > len(profiles.Favorites)) {
+					return "", fmt.Errorf("Environment variable PROFILE_FAVORITE=%dis larger then the profile length %d",profileEnvInt,len(profiles.Favorites) )
+				}
+				profileFavoriteChoice = profileEnvInt
+			} else {
+ 			 return "", fmt.Errorf("multiple VPN profiles found add your choice with the environment variable PROFILE_FAVORITE")				
+			}
 		}
-		for _, v := range profiles.Favorites {
+		for _, v := range profiles.Favorites[profileFavoriteChoice:profileFavoriteChoice+1] {
 			return v.Params, nil
 		}
 	}
