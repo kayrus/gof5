@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/user"
 	"runtime"
-
 	"github.com/kayrus/gof5/pkg/client"
 )
 
@@ -22,6 +21,7 @@ func main() {
 	var debug bool
 	var sel bool
 	var version bool
+	var profileIndex int
 	flag.StringVar(&server, "server", "", "")
 	flag.StringVar(&username, "username", "", "")
 	flag.StringVar(&password, "password", "", "")
@@ -30,6 +30,8 @@ func main() {
 	flag.BoolVar(&debug, "debug", false, "Show debug logs")
 	flag.BoolVar(&sel, "select", false, "Select a server from available F5 servers")
 	flag.BoolVar(&version, "version", false, "Show version and exit cleanly")
+	flag.IntVar(&profileIndex, "profile-index", 0, "If multiple VPN profiles are found chose profile n")
+
 	flag.Parse()
 
 	info := fmt.Sprintf("gof5 %s compiled with %s for %s/%s", Version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
@@ -51,7 +53,7 @@ func main() {
 		log.Fatalf("Program must be executed under root")
 	}
 
-	err := client.Connect(server, username, password, sessionID, closeSession, sel, debug)
+	err := client.Connect(server, username, password, sessionID, closeSession, sel, profileIndex, debug)
 	if err != nil {
 		log.Fatal(err)
 	}

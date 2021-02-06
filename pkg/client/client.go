@@ -9,6 +9,9 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
+	"github.com/kayrus/gof5/pkg/config"
+	"github.com/kayrus/gof5/pkg/cookie"
+	"github.com/kayrus/gof5/pkg/link"
 	"io"
 	"io/ioutil"
 	"log"
@@ -16,16 +19,11 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os/exec"
-	"os"
-	"strconv"
 	"os/signal"
 	"regexp"
 	"runtime"
 	"strings"
 	"syscall"
-	"github.com/kayrus/gof5/pkg/config"
-	"github.com/kayrus/gof5/pkg/cookie"
-	"github.com/kayrus/gof5/pkg/link"
 
 	"github.com/creack/pty"
 	"github.com/howeyc/gopass"
@@ -251,7 +249,7 @@ func login(c *http.Client, server string, username, password *string) error {
 	return nil
 }
 
-func parseProfile(reader io.ReadCloser) (string, error) {
+func parseProfile(reader io.ReadCloser, profileIndex int) (string, error) {
 	var profiles config.Profiles
 	dec := xml.NewDecoder(reader)
 	err := dec.Decode(&profiles)
@@ -259,26 +257,11 @@ func parseProfile(reader io.ReadCloser) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to unmarshal a response: %s", err)
 	}
-	profileFavoriteChoice := 0 
 	if profiles.Type == "VPN" {
-		if( len(profiles.Favorites) != 1) {
-			profileEnvStr := os.Getenv("PROFILE_FAVORITE")
-			if( len(profileEnvStr)>0 ){
-				profileEnvInt, err := strconv.Atoi(profileEnvStr)
-				if err != nil {
-					return "", fmt.Errorf("Environment variable PROFILE_FAVORITE must be int")
-				    }
-				if (profileEnvInt > len(profiles.Favorites)) {
-					return "", fmt.Errorf("Environment variable PROFILE_FAVORITE=%dis larger then the profile length %d",profileEnvInt,len(profiles.Favorites) )
-				}
-				profileFavoriteChoice = profileEnvInt
-			} else {
- 			 return "", fmt.Errorf("multiple VPN profiles found add your choice with the environment variable PROFILE_FAVORITE")				
-			}
+		if profileIndex >= len(profiles.Favorites) {
+			return "", fmt.Errorf("profile %q index is out of range", profileIndex)
 		}
-		for _, v := range profiles.Favorites[profileFavoriteChoice:profileFavoriteChoice+1] {
-			return v.Params, nil
-		}
+		return profiles.Favorites[profileIndex].Params, nil
 	}
 
 	return "", fmt.Errorf("VPN profile was not found")
@@ -373,7 +356,7 @@ func getServersList(c *http.Client, server string) (*url.URL, error) {
 	return u, nil
 }
 
-func Connect(server, username, password, sessionID string, closeSession, sel, debug bool) error {
+func Connect(server, username, password, sessionID string, closeSession, sel, profileIndex int, debug bool) error {
 	u, err := url.Parse(server)
 	if err != nil {
 		return fmt.Errorf("failed to parse server hostname: %s", err)
@@ -471,7 +454,7 @@ func Connect(server, username, password, sessionID string, closeSession, sel, de
 		return fmt.Errorf("wrong response code on profiles get: %d", resp.StatusCode)
 	}
 
-	profile, err := parseProfile(resp.Body)
+	profile, err := parseProfile(resp.Body, profileIndex)
 	if err != nil {
 		return fmt.Errorf("failed to parse VPN profiles: %s", err)
 	}
