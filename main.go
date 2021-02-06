@@ -53,7 +53,7 @@ func main() {
 		log.Fatalf("Program must be executed under root")
 	}
 
-	err := client.Connect(server, username, password, sessionID, closeSession, sel, profileIndex, debug)
+	err := client.Connect(server, username, password, sessionID, closeSession, sel, debug, profileIndex)
 	if err != nil {
 		log.Fatal(err)
 	}

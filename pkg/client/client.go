@@ -356,7 +356,7 @@ func getServersList(c *http.Client, server string) (*url.URL, error) {
 	return u, nil
 }
 
-func Connect(server, username, password, sessionID string, closeSession, sel, profileIndex int, debug bool) error {
+func Connect(server, username, password, sessionID string, closeSession, sel, debug bool, profileIndex int) error {
 	u, err := url.Parse(server)
 	if err != nil {
 		return fmt.Errorf("failed to parse server hostname: %s", err)
