@@ -558,7 +558,7 @@ func Connect(server, username, password, sessionID string, closeSession, sel, de
 	}
 
 	signal.Notify(l.TermChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGPIPE, syscall.SIGHUP)
-	<-l.TermChan
+	log.Printf("received %s signal, exiting", <-l.TermChan)
 
 	l.RestoreConfig(cfg)
 
