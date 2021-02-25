@@ -20,17 +20,19 @@ import (
 	"github.com/kayrus/gof5/pkg/resolv"
 	"github.com/kayrus/gof5/pkg/route"
 
+	"github.com/fatih/color"
 	"github.com/pion/dtls/v2"
 	"github.com/songgao/water"
 	"golang.zx2c4.com/wireguard/tun"
 )
 
 const (
-	printGreen   = "\033[1;32m%s\033[0m"
 	bufferSize   = 1500
 	defaultMTU   = 1420
 	userAgentVPN = "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; Trident/6.0; F5 Networks Client)"
 )
+
+var colorlog = log.New(color.Error, "", log.LstdFlags)
 
 type vpnLink struct {
 	sync.Mutex
@@ -60,31 +62,6 @@ type f5Conn interface {
 	Write([]byte) (int, error)
 	Read([]byte) (int, error)
 	Close() error
-}
-
-type f5Tun struct {
-	tun.Device
-	f5Conn
-}
-
-func (t *f5Tun) Read(b []byte) (int, error) {
-	if t.Device != nil {
-		// unix.IFF_NO_PI is not set, therefore we receive packet information
-		n, err := t.Device.File().Read(b)
-		if n < 4 {
-			return 0, err
-		}
-		// shift slice to the left
-		return copy(b[:n-4], b[4:n]), nil
-	}
-	return t.f5Conn.Read(b)
-}
-
-func (t *f5Tun) Write(b []byte) (int, error) {
-	if t.Device != nil {
-		return t.Device.Write(append(make([]byte, 4), b...), 4)
-	}
-	return t.f5Conn.Write(b)
 }
 
 func randomHostname(n int) []byte {
@@ -204,8 +181,11 @@ func InitConnection(server string, cfg *config.Config) (*vpnLink, error) {
 	case "wireguard":
 		log.Printf("Using wireguard module to create tunnel")
 		ifname := ""
-		if runtime.GOOS == "darwin" {
+		switch runtime.GOOS {
+		case "darwin":
 			ifname = "utun"
+		case "windows":
+			ifname = "gof5"
 		}
 		device, err := tun.CreateTUN(ifname, defaultMTU)
 		if err != nil {
@@ -252,7 +232,7 @@ func (l *vpnLink) WaitAndConfig(cfg *config.Config) {
 
 	if !cfg.DisableDNS {
 		// define DNS servers, provided by F5
-		if err = resolv.ConfigureDNS(cfg); err != nil {
+		if err = resolv.ConfigureDNS(cfg, l.name); err != nil {
 			l.errChan <- err
 			return
 		}
@@ -295,17 +275,22 @@ func (l *vpnLink) WaitAndConfig(cfg *config.Config) {
 		log.Printf("Applying routes, pushed from F5 VPN server")
 		routes = cfg.F5Config.Object.Routes.GetNetworks()
 	}
+	var gw net.IP
+	if runtime.GOOS == "windows" {
+		// windows requires both gateway and interface name
+		gw = l.serverIPv4
+	}
 	for _, cidr := range routes {
 		if l.debug {
 			log.Printf("Adding %s route", cidr)
 		}
-		if err = route.RouteAdd(cidr, nil, 0, l.name); err != nil {
+		if err = route.RouteAdd(cidr, gw, 0, l.name); err != nil {
 			l.errChan <- err
 			return
 		}
 	}
 	l.routesReady = true
-	log.Printf(printGreen, "Connection established")
+	colorlog.Printf(color.HiGreenString("Connection established"))
 }
 
 // restore config

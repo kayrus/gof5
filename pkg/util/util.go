@@ -1,6 +1,7 @@
 package util
 
 import (
+	"fmt"
 	"net"
 )
 
@@ -42,7 +43,7 @@ func GetNet(v interface{}) *net.IPNet {
 }
 
 func SplitFunc(c rune) bool {
-	return c == ' '
+	return c == ' ' || c == '\n' || c == '\r'
 }
 
 func StrSliceContains(haystack []string, needle string) bool {
@@ -52,4 +53,13 @@ func StrSliceContains(haystack []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+func GetIfID(name string) (int, error) {
+	iface, err := net.InterfaceByName(name)
+	if err != nil {
+		return 0, fmt.Errorf("failed to find a %q interface index: %s", name, err)
+	}
+
+	return iface.Index, nil
 }

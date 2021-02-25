@@ -12,6 +12,7 @@ import (
 
 	"github.com/kayrus/gof5/pkg/util"
 
+	"github.com/fatih/color"
 	"github.com/hpcloud/tail"
 	"github.com/zaninime/go-hdlc"
 	"golang.org/x/net/ipv4"
@@ -128,7 +129,7 @@ func (l *vpnLink) PppdLogParser(stderr io.Reader) {
 		if strings.Contains(str, "remote IP address") {
 			l.upChan <- true
 		}
-		log.Printf(printGreen, str)
+		colorlog.Printf(color.HiGreenString(str))
 	}
 }
 
@@ -157,6 +158,6 @@ func (l *vpnLink) PppLogParser() {
 		if strings.Contains(str, "IPCP: myaddr") {
 			l.upChan <- true
 		}
-		log.Printf(printGreen, str)
+		colorlog.Printf(color.HiGreenString(str))
 	}
 }

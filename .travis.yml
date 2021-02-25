@@ -1,9 +1,19 @@
+before_install:
+- |-
+    case $TRAVIS_OS_NAME in
+      windows)
+        export MAKE=mingw32-make
+        ;;
+      *)
+        export MAKE=make
+        ;;
+    esac
 dist: focal
 language: go
 go:
 - 1.15.x
 script:
-- make
+- $MAKE
 branches:
   only:
   - master
@@ -12,8 +22,9 @@ matrix:
   include:
   - os: linux
   - os: osx
+  - os: windows
 before_deploy:
-- make
+- $MAKE
 deploy:
   provider: releases
   api_key:
