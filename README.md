@@ -2,7 +2,7 @@
 
 ## Requirements
 
-* an application must be executed under a privileged root user
+* an application must be executed under a privileged user
 
 ## MacOS
 
@@ -15,6 +15,11 @@ xattr -d com.apple.quarantine ./path/to/gof5_darwin
 ## FreeBSD
 
 On FreeBSD only `wireguard` or `ppp` (a wrapper around the ppp binary) drivers work. However the `wireguard` driver requires a [FreeBSD patch](freebsd.patch) applied before the compilation.
+
+## Windows
+
+Windows version requires `powershell.exe` and doesn't support `pppd` driver.
+If gof5 cannot listen to 53 DNS port, try to comment out the `dns:` list in a config file.
 
 ## HOWTO
 

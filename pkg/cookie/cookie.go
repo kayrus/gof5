@@ -7,7 +7,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 
@@ -21,7 +22,8 @@ const cookiesName = "cookies.yaml"
 func parseCookies(configPath string) map[string][]string {
 	cookies := make(map[string][]string)
 
-	v, err := ioutil.ReadFile(path.Join(configPath, cookiesName))
+	cookiesPath := filepath.Join(configPath, cookiesName)
+	v, err := ioutil.ReadFile(cookiesPath)
 	if err != nil {
 		// skip "no such file or directory" error on the first startup
 		if e, ok := err.(*os.PathError); !ok || e.Unwrap() != syscall.ENOENT {
@@ -73,13 +75,15 @@ func SaveCookies(c *http.Client, u *url.URL, cfg *config.Config) error {
 		return fmt.Errorf("cannot marshal cookies: %v", err)
 	}
 
-	cookiesPath := path.Join(cfg.Path, cookiesName)
+	cookiesPath := filepath.Join(cfg.Path, cookiesName)
 	if err = ioutil.WriteFile(cookiesPath, cookies, 0600); err != nil {
 		return fmt.Errorf("failed to save cookies: %s", err)
 	}
 
-	if err = os.Chown(cookiesPath, cfg.Uid, cfg.Gid); err != nil {
-		return fmt.Errorf("failed to set an owner for cookies file: %s", err)
+	if runtime.GOOS != "windows" {
+		if err = os.Chown(cookiesPath, cfg.Uid, cfg.Gid); err != nil {
+			return fmt.Errorf("failed to set an owner for cookies file: %s", err)
+		}
 	}
 
 	return nil

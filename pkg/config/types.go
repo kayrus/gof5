@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"net/url"
-	"os/user"
 	"strings"
 
 	"github.com/kayrus/gof5/pkg/util"
@@ -32,9 +31,6 @@ type Config struct {
 	DNSServers []net.IP `yaml:"-"`
 	// the list of "search" entries, parsed from the /etc/resolv.conf
 	DNSSearch []string `yaml:"-"`
-	// internal parameters
-	// current user or sudo user
-	User *user.User `yaml:"-"`
 	// config path
 	Path string `yaml:"-"`
 	// current user or sudo user UID

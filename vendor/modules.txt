@@ -3,9 +3,9 @@
 github.com/IBM/netaddr
 # github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
 github.com/chzyer/readline
-# github.com/creack/pty v1.1.11
+# github.com/fatih/color v1.10.0
 ## explicit
-github.com/creack/pty
+github.com/fatih/color
 # github.com/howeyc/gopass v0.0.0-20190910152052-7cb4b85ec19c
 ## explicit
 github.com/howeyc/gopass
@@ -29,9 +29,9 @@ github.com/lunixbochs/vtclean
 github.com/manifoldco/promptui
 github.com/manifoldco/promptui/list
 github.com/manifoldco/promptui/screenbuf
-# github.com/mattn/go-colorable v0.0.9
+# github.com/mattn/go-colorable v0.1.8
 github.com/mattn/go-colorable
-# github.com/mattn/go-isatty v0.0.4
+# github.com/mattn/go-isatty v0.0.12
 github.com/mattn/go-isatty
 # github.com/miekg/dns v1.1.35
 ## explicit
@@ -81,6 +81,7 @@ golang.org/x/net/internal/socket
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
 # golang.org/x/sys v0.0.0-20201126233918-771906719818
+## explicit
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/plan9
 golang.org/x/sys/unix

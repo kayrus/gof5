@@ -38,7 +38,7 @@ func getInterfaces() ([]string, error) {
 	return res, nil
 }
 
-func ConfigureDNS(cfg *config.Config) error {
+func ConfigureDNS(cfg *config.Config, _ string) error {
 	ifaces, err := getInterfaces()
 	if err != nil {
 		return err
