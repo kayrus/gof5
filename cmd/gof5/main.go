@@ -53,6 +53,10 @@ func main() {
 		os.Exit(0)
 	}
 
+	if profileIndex < 0 {
+		fatal(fmt.Errorf("profile-index cannot be negative"))
+	}
+
 	log.Print(info)
 
 	if err := checkPermissions(); err != nil {
