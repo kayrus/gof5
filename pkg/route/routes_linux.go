@@ -48,18 +48,6 @@ func SetInterface(name string, local, server net.IP, mtu int) error {
 	return nil
 }
 
-func RouteGet(dst net.IP) ([]net.IP, error) {
-	v, err := netlink.RouteGet(dst)
-	if err != nil {
-		return nil, fmt.Errorf("failed to discover the gateway for %s: %s", dst, err)
-	}
-	gateways := make([]net.IP, len(v))
-	for i, v := range v {
-		gateways[i] = v.Gw
-	}
-	return gateways, nil
-}
-
 func RouteAdd(dst interface{}, gw net.IP, priority int, name string) error {
 	route := netlink.Route{
 		Dst:      util.GetNet(dst),

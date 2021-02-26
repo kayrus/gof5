@@ -16,9 +16,6 @@ github.com/hpcloud/tail/ratelimiter
 github.com/hpcloud/tail/util
 github.com/hpcloud/tail/watch
 github.com/hpcloud/tail/winfile
-# github.com/jackpal/gateway v1.0.6
-## explicit
-github.com/jackpal/gateway
 # github.com/juju/ansiterm v0.0.0-20180109212912-720a0952cc2a
 github.com/juju/ansiterm
 github.com/juju/ansiterm/tabwriter
