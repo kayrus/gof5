@@ -16,15 +16,15 @@ import (
 )
 
 type Config struct {
-	Debug       bool         `yanl:"-"`
-	Driver      string       `yaml:"driver"`
-	ListenDNS   net.IP       `yaml:"-"`
-	DNS         []string     `yaml:"dns"`
-	Routes      []*net.IPNet `yaml:"-"`
-	PPPdArgs    []string     `yaml:"pppdArgs"`
-	InsecureTLS bool         `yaml:"insecureTLS"`
-	DTLS        bool         `yaml:"dtls"`
-	IPv6        bool         `yaml:"ipv6"`
+	Debug       bool           `yanl:"-"`
+	Driver      string         `yaml:"driver"`
+	ListenDNS   net.IP         `yaml:"-"`
+	DNS         []string       `yaml:"dns"`
+	Routes      *netaddr.IPSet `yaml:"-"`
+	PPPdArgs    []string       `yaml:"pppdArgs"`
+	InsecureTLS bool           `yaml:"insecureTLS"`
+	DTLS        bool           `yaml:"dtls"`
+	IPv6        bool           `yaml:"ipv6"`
 	// completely disable DNS servers handling
 	DisableDNS bool `yaml:"disableDNS"`
 	// rewrite /etc/resolv.conf instead of renaming
@@ -75,15 +75,11 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	if s.Routes != nil {
 		// handle the case, when routes is an empty list
-		r.Routes = make([]*net.IPNet, 0)
-	}
-
-	for _, v := range s.Routes {
-		cidr, err := parseCIDR(v)
+		parsedCIDRs, err := parseCIDRs(s.Routes, net.IPv4len)
 		if err != nil {
-			return fmt.Errorf("cannot parse %s CIDR: %s", v, err)
+			return err
 		}
-		r.Routes = append(r.Routes, cidr)
+		r.Routes = subnetsToIPSet(parsedCIDRs)
 	}
 
 	// default pppd arguments
@@ -203,28 +199,6 @@ type Filter struct {
 	DstPort string `xml:"dst_port,attr"`
 }
 
-func parseCIDR(s string) (*net.IPNet, error) {
-	_, cidr, err := net.ParseCIDR(s)
-	if err != nil {
-		// fallback to a single IP
-		ip := net.ParseIP(s)
-		if ip == nil {
-			return nil, fmt.Errorf("cannot parse %s CIDR: %s", s, err)
-		}
-		// normalize IP
-		cidr = util.GetNet(ip)
-	} else {
-		// normalize CIDR
-		cidr = util.GetNet(cidr)
-	}
-
-	if cidr == nil {
-		return nil, fmt.Errorf("cannot parse %s CIDR", s)
-	}
-
-	return cidr, nil
-}
-
 func (o *Object) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type tmp Object
 	var s struct {
@@ -317,6 +291,39 @@ func processIPs(ips string, length int) []net.IP {
 	return nil
 }
 
+func parseCIDRs(cidrs []string, length int) ([]*net.IPNet, error) {
+	t := make([]*net.IPNet, len(cidrs))
+	for i, v := range cidrs {
+		var cidr *net.IPNet
+		var err error
+
+		if ip := net.ParseIP(v); ip != nil {
+			cidr = &net.IPNet{
+				IP:   ip,
+				Mask: net.CIDRMask(32, 32),
+			}
+		} else {
+			// parse 1.2.3.4/12 format
+			_, cidr, err = net.ParseCIDR(v)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse %q cidr: %v", v, err)
+			}
+		}
+		if length == net.IPv4len {
+			t[i] = &net.IPNet{
+				IP:   cidr.IP.To4(),
+				Mask: cidr.Mask,
+			}
+		} else if length == net.IPv6len {
+			t[i] = &net.IPNet{
+				IP:   cidr.IP.To16(),
+				Mask: cidr.Mask,
+			}
+		}
+	}
+	return t, nil
+}
+
 func processCIDRs(cidrs string, length int) []*net.IPNet {
 	if v := strings.FieldsFunc(strings.TrimSpace(cidrs), util.SplitFunc); len(v) > 0 {
 		var t []*net.IPNet
@@ -347,6 +354,18 @@ func processCIDRs(cidrs string, length int) []*net.IPNet {
 		return t
 	}
 	return nil
+}
+
+func subnetsToIPSet(subnets []*net.IPNet) *netaddr.IPSet {
+	// initialize an empty IPSet
+	ipSet4 := &netaddr.IPSet{}
+
+	for _, v := range subnets {
+		ipSet4.InsertNet(v)
+	}
+
+	// get a routes list
+	return ipSet4
 }
 
 func inverseCIDRs4(exclude []*net.IPNet) *netaddr.IPSet {

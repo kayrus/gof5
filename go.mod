@@ -5,7 +5,6 @@ require (
 	github.com/fatih/color v1.10.0
 	github.com/howeyc/gopass v0.0.0-20190910152052-7cb4b85ec19c
 	github.com/hpcloud/tail v1.0.0
-	github.com/jackpal/gateway v1.0.6
 	github.com/manifoldco/promptui v0.8.0
 	github.com/miekg/dns v1.1.35
 	github.com/pion/dtls/v2 v2.0.4

@@ -85,7 +85,6 @@ func RestoreDNS(cfg *config.Config) {
 		return
 	}
 
-	log.Printf("Restoring original %s", config.ResolvPath)
 	if err := os.Rename(resolvPathBak, config.ResolvPath); err != nil {
 		log.Printf("Failed to restore %s: %s", config.ResolvPath, err)
 	}

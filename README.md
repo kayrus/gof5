@@ -25,7 +25,7 @@ If gof5 cannot listen to 53 DNS port, try to comment out the `dns:` list in a co
 
 Developer mode should be enabled, since gof5 requires root privileges.
 The binary should be placed inside the `/usr/share/oem` directory. Home directory in ChromeOS doesn't allow to have executables.
-`rewriteResolv` config option should be enabled.
+`rewriteResolv: true` and `driver: pppd` config options should be set.
 
 ## HOWTO
 

@@ -36,26 +36,24 @@ var colorlog = log.New(color.Error, "", log.LstdFlags)
 
 type vpnLink struct {
 	sync.Mutex
-	HTTPConn          f5Conn
-	Ret               error
-	TermChan          chan os.Signal
-	name              string
-	routesReady       bool
-	serverRoutesReady bool
-	dnsReady          bool
-	iface             f5Tun
-	errChan           chan error
-	upChan            chan bool
-	nameChan          chan string
-	serverIPs         []net.IP
-	localIPv4         net.IP
-	serverIPv4        net.IP
-	localIPv6         net.IP
-	serverIPv6        net.IP
-	mtu               []byte
-	mtuInt            uint16
-	gateways          []net.IP
-	debug             bool
+	HTTPConn    f5Conn
+	Ret         error
+	TermChan    chan os.Signal
+	name        string
+	routesReady bool
+	dnsReady    bool
+	iface       f5Tun
+	errChan     chan error
+	upChan      chan bool
+	nameChan    chan string
+	serverIPs   []net.IP
+	localIPv4   net.IP
+	serverIPv4  net.IP
+	localIPv6   net.IP
+	serverIPv6  net.IP
+	mtu         []byte
+	mtuInt      uint16
+	debug       bool
 }
 
 type f5Conn interface {
@@ -252,38 +250,28 @@ func (l *vpnLink) WaitAndConfig(cfg *config.Config) {
 		}
 	}
 
-	// set F5 gateway route
-	for _, dst := range l.serverIPs {
-		gws, err := route.RouteGet(dst)
-		if err != nil {
-			l.errChan <- err
-			return
-		}
-		for _, gw := range gws {
-			if l.debug {
-				log.Printf("Adding %s route", dst)
-			}
-			if err = route.RouteAdd(dst, gw, 1, l.name); err != nil {
-				l.errChan <- err
-				return
-			}
-			l.gateways = append(l.gateways, gw)
-		}
-		l.serverRoutesReady = true
-	}
-
 	// set custom routes
 	routes := cfg.Routes
 	if routes == nil {
 		log.Printf("Applying routes, pushed from F5 VPN server")
-		routes = cfg.F5Config.Object.Routes.GetNetworks()
+		routes = cfg.F5Config.Object.Routes
 	}
+
+	// exclude F5 gateway IPs
+	for _, dst := range l.serverIPs {
+		local := &net.IPNet{
+			IP:   dst.To4(),
+			Mask: net.CIDRMask(32, 32),
+		}
+		routes.RemoveNet(local)
+	}
+
 	var gw net.IP
 	if runtime.GOOS == "windows" {
 		// windows requires both gateway and interface name
 		gw = l.serverIPv4
 	}
-	for _, cidr := range routes {
+	for _, cidr := range routes.GetNetworks() {
 		if l.debug {
 			log.Printf("Adding %s route", cidr)
 		}
@@ -316,17 +304,6 @@ func (l *vpnLink) RestoreConfig(cfg *config.Config) {
 		}
 	}
 
-	if l.serverRoutesReady {
-		// remove F5 gateway route
-		for _, dst := range l.serverIPs {
-			for _, gw := range l.gateways {
-				if err := route.RouteDel(dst, gw, 1, l.name); err != nil {
-					log.Print(err)
-				}
-			}
-		}
-	}
-
 	var gw net.IP
 	if runtime.GOOS == "windows" {
 		// windows requires both gateway and interface name
@@ -337,9 +314,9 @@ func (l *vpnLink) RestoreConfig(cfg *config.Config) {
 			log.Printf("Removing routes from %s interface", l.name)
 			routes := cfg.Routes
 			if routes == nil {
-				routes = cfg.F5Config.Object.Routes.GetNetworks()
+				routes = cfg.F5Config.Object.Routes
 			}
-			for _, cidr := range routes {
+			for _, cidr := range routes.GetNetworks() {
 				if err := route.RouteDel(cidr, gw, 0, l.name); err != nil {
 					log.Print(err)
 				}

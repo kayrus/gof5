@@ -8,8 +8,6 @@ import (
 	"os/exec"
 
 	"github.com/kayrus/gof5/pkg/util"
-
-	"github.com/jackpal/gateway"
 )
 
 var ifIndex int
@@ -45,14 +43,6 @@ func SetInterface(name string, local, server net.IP, mtu int) error {
 	}
 
 	return nil
-}
-
-func RouteGet(dst net.IP) ([]net.IP, error) {
-	v, err := gateway.DiscoverGateway()
-	if err != nil {
-		return nil, fmt.Errorf("failed to discover the gateway for %s: %s", dst, err)
-	}
-	return []net.IP{v}, nil
 }
 
 func RouteAdd(dst interface{}, gw net.IP, priority int, name string) error {
