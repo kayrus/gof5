@@ -11,7 +11,7 @@ before_install:
 dist: focal
 language: go
 go:
-- 1.15.x
+- 1.16.x
 script:
 - $MAKE
 branches:
