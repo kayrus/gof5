@@ -21,6 +21,12 @@ On FreeBSD only `wireguard` or `ppp` (a wrapper around the ppp binary) drivers w
 Windows version requires `powershell.exe` and doesn't support `pppd` driver.
 If gof5 cannot listen to 53 DNS port, try to comment out the `dns:` list in a config file.
 
+## ChromeOS
+
+Developer mode should be enabled, since gof5 requires root privileges.
+The binary should be placed inside the `/usr/share/oem` directory. Home directory in ChromeOS doesn't allow to have executables.
+`rewriteResolv` config option should be enabled.
+
 ## HOWTO
 
 ```sh
@@ -53,6 +59,9 @@ You can define an extra `~/.gof5/config.yaml` file with contents:
 ```yaml
 # DNS proxy listen address, defaults to 127.0.0.1
 listenDNS: 127.0.0.1
+# rewrite /etc/resolv.conf instead of renaming
+# required in ChromeOS, where /etc/resolv.conf cannot be renamed
+rewriteResolv: false
 # TLS certificate check
 insecureTLS: false
 # Enable IPv6

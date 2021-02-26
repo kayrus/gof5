@@ -260,6 +260,9 @@ func (l *vpnLink) WaitAndConfig(cfg *config.Config) {
 			return
 		}
 		for _, gw := range gws {
+			if l.debug {
+				log.Printf("Adding %s route", dst)
+			}
 			if err = route.RouteAdd(dst, gw, 1, l.name); err != nil {
 				l.errChan <- err
 				return
@@ -324,6 +327,11 @@ func (l *vpnLink) RestoreConfig(cfg *config.Config) {
 		}
 	}
 
+	var gw net.IP
+	if runtime.GOOS == "windows" {
+		// windows requires both gateway and interface name
+		gw = l.serverIPv4
+	}
 	if l.routesReady {
 		if l.Ret == nil {
 			log.Printf("Removing routes from %s interface", l.name)
@@ -332,7 +340,7 @@ func (l *vpnLink) RestoreConfig(cfg *config.Config) {
 				routes = cfg.F5Config.Object.Routes.GetNetworks()
 			}
 			for _, cidr := range routes {
-				if err := route.RouteDel(cidr, nil, 0, l.name); err != nil {
+				if err := route.RouteDel(cidr, gw, 0, l.name); err != nil {
 					log.Print(err)
 				}
 			}
