@@ -26,7 +26,6 @@ import (
 	"github.com/kayrus/gof5/pkg/cookie"
 	"github.com/kayrus/gof5/pkg/link"
 
-	"github.com/creack/pty"
 	"github.com/howeyc/gopass"
 	"github.com/manifoldco/promptui"
 )
@@ -361,6 +360,11 @@ func getServersList(c *http.Client, server string) (*url.URL, error) {
 }
 
 func Connect(server, username, password, sessionID string, closeSession, sel, debug bool) error {
+	if server == "" {
+		fmt.Print("Enter server address: ")
+		fmt.Scanln(&server)
+	}
+
 	u, err := url.Parse(server)
 	if err != nil {
 		return fmt.Errorf("failed to parse server hostname: %s", err)
@@ -536,7 +540,16 @@ func Connect(server, username, password, sessionID string, closeSession, sel, de
 			go l.PppdLogParser(stderr)
 		}
 
-		pppd, err := pty.Start(cmd)
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			return fmt.Errorf("cannot allocate stdin pipe: %s", err)
+		}
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return fmt.Errorf("cannot allocate stdout pipe: %s", err)
+		}
+
+		err = cmd.Start()
 		if err != nil {
 			return fmt.Errorf("failed to start pppd: %s", err)
 		}
@@ -545,10 +558,10 @@ func Connect(server, username, password, sessionID string, closeSession, sel, de
 		go l.PppdWait(cmd)
 
 		// pppd http->tun go routine
-		go l.PppdHTTPToTun(pppd)
+		go l.PppdHTTPToTun(stdin)
 
 		// pppd tun->http go routine
-		go l.PppdTunToHTTP(pppd)
+		go l.PppdTunToHTTP(stdout)
 	} else {
 		// http->tun go routine
 		go l.HttpToTun()

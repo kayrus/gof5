@@ -92,6 +92,7 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		"passive",
 		"ipcp-accept-local",
 		"ipcp-accept-remote",
+		"notty", // use default stdin/stdout
 		"nodefaultroute",
 		// nocompression
 		"novj",
