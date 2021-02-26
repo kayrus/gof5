@@ -249,7 +249,7 @@ func login(c *http.Client, server string, username, password *string) error {
 	return nil
 }
 
-func parseProfile(reader io.ReadCloser) (string, error) {
+func parseProfile(reader io.ReadCloser, profileIndex int) (string, error) {
 	var profiles config.Profiles
 	dec := xml.NewDecoder(reader)
 	err := dec.Decode(&profiles)
@@ -259,12 +259,10 @@ func parseProfile(reader io.ReadCloser) (string, error) {
 	}
 
 	if profiles.Type == "VPN" {
-		if len(profiles.Favorites) != 1 {
-			return "", fmt.Errorf("multiple VPN profiles found (FIXME)")
+		if profileIndex >= len(profiles.Favorites) {
+			return "", fmt.Errorf("profile %q index is out of range", profileIndex)
 		}
-		for _, v := range profiles.Favorites {
-			return v.Params, nil
-		}
+		return profiles.Favorites[profileIndex].Params, nil
 	}
 
 	return "", fmt.Errorf("VPN profile was not found")
@@ -359,7 +357,7 @@ func getServersList(c *http.Client, server string) (*url.URL, error) {
 	return u, nil
 }
 
-func Connect(server, username, password, sessionID string, closeSession, sel, debug bool) error {
+func Connect(server, username, password, sessionID string, closeSession, sel, debug bool, profileIndex int) error {
 	if server == "" {
 		fmt.Print("Enter server address: ")
 		fmt.Scanln(&server)
@@ -462,7 +460,7 @@ func Connect(server, username, password, sessionID string, closeSession, sel, de
 		return fmt.Errorf("wrong response code on profiles get: %d", resp.StatusCode)
 	}
 
-	profile, err := parseProfile(resp.Body)
+	profile, err := parseProfile(resp.Body, profileIndex)
 	if err != nil {
 		return fmt.Errorf("failed to parse VPN profiles: %s", err)
 	}
