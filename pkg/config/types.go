@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/kayrus/gof5/pkg/util"
@@ -26,6 +27,11 @@ type Config struct {
 	IPv6        bool         `yaml:"ipv6"`
 	// completely disable DNS servers handling
 	DisableDNS bool `yaml:"disableDNS"`
+	// rewrite /etc/resolv.conf instead of renaming
+	// required in ChromeOS, where /etc/resolv.conf cannot be renamed
+	RewriteResolv bool `yaml:"rewriteResolv"`
+	// contains original /etc/resolv.conf permissions
+	ResolvConfPerm os.FileMode `yaml:"-"`
 	// list of DNS local servers
 	// when list is empty, parsed from /etc/resolv.conf
 	DNSServers []net.IP `yaml:"-"`

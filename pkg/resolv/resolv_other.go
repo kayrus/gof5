@@ -45,20 +45,22 @@ func ConfigureDNS(cfg *config.Config, _ string) error {
 	}
 
 	// default "/etc/resolv.conf" permissions
-	var perm os.FileMode = 0644
+	cfg.ResolvConfPerm = 0644
 	if cfg.ResolvConf != nil {
 		info, err := os.Stat(config.ResolvPath)
 		if err != nil {
 			return err
 		}
 		// reuse the original "/etc/resolv.conf" permissions
-		perm = info.Mode()
-		if err := os.Rename(config.ResolvPath, resolvPathBak); err != nil {
-			return err
+		cfg.ResolvConfPerm = info.Mode()
+		if !cfg.RewriteResolv {
+			if err := os.Rename(config.ResolvPath, resolvPathBak); err != nil {
+				return err
+			}
 		}
 	}
 
-	if err := ioutil.WriteFile(config.ResolvPath, dns.Bytes(), perm); err != nil {
+	if err := ioutil.WriteFile(config.ResolvPath, dns.Bytes(), cfg.ResolvConfPerm); err != nil {
 		return fmt.Errorf("failed to write %s: %s", config.ResolvPath, err)
 	}
 
@@ -71,6 +73,14 @@ func RestoreDNS(cfg *config.Config) {
 		log.Printf("Removing custom %s", config.ResolvPath)
 		if err := os.Remove(config.ResolvPath); err != nil {
 			log.Println(err)
+		}
+		return
+	}
+
+	log.Printf("Restoring original %s", config.ResolvPath)
+	if cfg.RewriteResolv {
+		if err := ioutil.WriteFile(config.ResolvPath, cfg.ResolvConf, cfg.ResolvConfPerm); err != nil {
+			log.Printf("Failed to restore %s: %s", config.ResolvPath, err)
 		}
 		return
 	}
