@@ -259,9 +259,16 @@ func parseProfile(reader io.ReadCloser, profileIndex int) (string, error) {
 	}
 
 	if profiles.Type == "VPN" {
+		prfls := make([]string, len(profiles.Favorites))
+		for i, p := range profiles.Favorites {
+			prfls[i] = fmt.Sprintf("%d:%s", i, p.Name)
+		}
+		log.Printf("Found F5 VPN profiles: %q", prfls)
+
 		if profileIndex >= len(profiles.Favorites) {
 			return "", fmt.Errorf("profile %q index is out of range", profileIndex)
 		}
+		log.Printf("Using %q F5 VPN profile", profiles.Favorites[profileIndex].Name)
 		return profiles.Favorites[profileIndex].Params, nil
 	}
 
