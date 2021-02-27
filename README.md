@@ -52,7 +52,7 @@ Use `--close-session` flag to terminate an HTTPS VPN session on exit. Next start
 
 Use `--select` to choose a VPN server from the list, known to a current server.
 
-Use `--profile` to define a custom F5 VPN profile index.
+Use `--profile-index` to define a custom F5 VPN profile index.
 
 ## Configuration
 
