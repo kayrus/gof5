@@ -11,7 +11,10 @@ import (
 	"github.com/kayrus/gof5/pkg/client"
 )
 
-var Version = "dev"
+var (
+	Version = "dev"
+	info    = fmt.Sprintf("gof5 %s compiled with %s for %s/%s", Version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+)
 
 func fatal(err error) {
 	if runtime.GOOS == "windows" {
@@ -25,35 +28,30 @@ func fatal(err error) {
 }
 
 func main() {
-	var server string
-	var username string
-	var password string
-	var sessionID string
-	var closeSession bool
-	var debug bool
-	var sel bool
 	var version bool
-	var profileIndex int
-	flag.StringVar(&server, "server", "", "")
-	flag.StringVar(&username, "username", "", "")
-	flag.StringVar(&password, "password", "", "")
-	flag.StringVar(&sessionID, "session", "", "Reuse a session ID")
-	flag.BoolVar(&closeSession, "close-session", false, "Close HTTPS VPN session on exit")
-	flag.BoolVar(&debug, "debug", false, "Show debug logs")
-	flag.BoolVar(&sel, "select", false, "Select a server from available F5 servers")
+	var opts client.Options
+
+	flag.StringVar(&opts.Server, "server", "", "")
+	flag.StringVar(&opts.Username, "username", "", "")
+	flag.StringVar(&opts.Password, "password", "", "")
+	flag.StringVar(&opts.SessionID, "session", "", "Reuse a session ID")
+	flag.StringVar(&opts.CACert, "ca-cert", "", "Path to a custom CA certificate")
+	flag.StringVar(&opts.Cert, "cert", "", "Path to a user TLS certificate")
+	flag.StringVar(&opts.Key, "key", "", "Path to a user TLS key")
+	flag.BoolVar(&opts.CloseSession, "close-session", false, "Close HTTPS VPN session on exit")
+	flag.BoolVar(&opts.Debug, "debug", false, "Show debug logs")
+	flag.BoolVar(&opts.Sel, "select", false, "Select a server from available F5 servers")
+	flag.IntVar(&opts.ProfileIndex, "profile-index", 0, "If multiple VPN profiles are found chose profile n")
 	flag.BoolVar(&version, "version", false, "Show version and exit cleanly")
-	flag.IntVar(&profileIndex, "profile-index", 0, "If multiple VPN profiles are found chose profile n")
 
 	flag.Parse()
-
-	info := fmt.Sprintf("gof5 %s compiled with %s for %s/%s", Version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 
 	if version {
 		fmt.Println(info)
 		os.Exit(0)
 	}
 
-	if profileIndex < 0 {
+	if opts.ProfileIndex < 0 {
 		fatal(fmt.Errorf("profile-index cannot be negative"))
 	}
 
@@ -63,8 +61,7 @@ func main() {
 		fatal(err)
 	}
 
-	err := client.Connect(server, username, password, sessionID, closeSession, sel, debug, profileIndex)
-	if err != nil {
+	if err := client.Connect(&opts); err != nil {
 		fatal(err)
 	}
 }

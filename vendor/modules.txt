@@ -33,6 +33,9 @@ github.com/mattn/go-isatty
 # github.com/miekg/dns v1.1.35
 ## explicit
 github.com/miekg/dns
+# github.com/mitchellh/go-homedir v1.1.0
+## explicit
+github.com/mitchellh/go-homedir
 # github.com/pion/dtls/v2 v2.0.4
 ## explicit
 github.com/pion/dtls/v2

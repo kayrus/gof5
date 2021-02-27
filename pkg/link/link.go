@@ -75,7 +75,7 @@ func randomHostname(n int) []byte {
 }
 
 // init a TLS connection
-func InitConnection(server string, cfg *config.Config) (*vpnLink, error) {
+func InitConnection(server string, cfg *config.Config, tlsConfig *tls.Config) (*vpnLink, error) {
 	// TLS
 	getURL := fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s",
 		server,
@@ -110,7 +110,7 @@ func InitConnection(server string, cfg *config.Config) (*vpnLink, error) {
 			return nil, fmt.Errorf("failed to resolve UDP address: %s", err)
 		}
 		conf := &dtls.Config{
-			InsecureSkipVerify: cfg.InsecureTLS,
+			InsecureSkipVerify: tlsConfig.InsecureSkipVerify,
 			ServerName:         server,
 		}
 		l.HTTPConn, err = dtls.Dial("udp", addr, conf)
@@ -118,10 +118,7 @@ func InitConnection(server string, cfg *config.Config) (*vpnLink, error) {
 			return nil, fmt.Errorf("failed to dial %s:%s: %s", server, cfg.F5Config.Object.TunnelPortDTLS, err)
 		}
 	} else {
-		conf := &tls.Config{
-			InsecureSkipVerify: cfg.InsecureTLS,
-		}
-		l.HTTPConn, err = tls.Dial("tcp", fmt.Sprintf("%s:443", server), conf)
+		l.HTTPConn, err = tls.Dial("tcp", fmt.Sprintf("%s:443", server), tlsConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to dial %s:443: %s", server, err)
 		}

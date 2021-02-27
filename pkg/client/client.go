@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/md5"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
@@ -15,6 +16,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"os"
 	"os/exec"
 	"os/signal"
 	"regexp"
@@ -28,12 +30,88 @@ import (
 
 	"github.com/howeyc/gopass"
 	"github.com/manifoldco/promptui"
+	"github.com/mitchellh/go-homedir"
 )
 
 const (
 	userAgent        = "Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.1a2pre) Gecko/2008073000 Shredder/3.0a2pre ThunderBrowse/3.2.1.8"
 	androidUserAgent = "Mozilla/5.0 (Linux; Android 10; SM-G975F Build/QP1A.190711.020) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/81.0.4044.138 Mobile Safari/537.36 EdgeClient/3.0.7 F5Access/3.0.7"
 )
+
+type Options struct {
+	Server       string
+	Username     string
+	Password     string
+	SessionID    string
+	CACert       string
+	Cert         string
+	Key          string
+	CloseSession bool
+	Debug        bool
+	Sel          bool
+	Version      bool
+	ProfileIndex int
+}
+
+func tlsConfig(opts *Options, insecure bool) (*tls.Config, error) {
+	config := &tls.Config{
+		InsecureSkipVerify: insecure,
+	}
+
+	if opts.CACert != "" {
+		caCert, err := readFile(opts.CACert)
+		if err != nil {
+			return nil, err
+		}
+		config.RootCAs = x509.NewCertPool()
+		config.RootCAs.AppendCertsFromPEM(caCert)
+	}
+
+	if opts.Cert != "" && opts.Key != "" {
+		crt, err := readFile(opts.Cert)
+		if err != nil {
+			return nil, err
+		}
+		key, err := readFile(opts.Key)
+		if err != nil {
+			return nil, err
+		}
+
+		cert, err := tls.X509KeyPair(crt, key)
+		if err != nil {
+			return nil, err
+		}
+
+		config.Certificates = []tls.Certificate{cert}
+	}
+
+	return config, nil
+}
+
+func readFile(path string) ([]byte, error) {
+	if len(path) == 0 {
+		return nil, nil
+	}
+
+	if path[0] == '~' {
+		var err error
+		path, err = homedir.Expand(path)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if _, err := os.Stat(path); err != nil {
+		return nil, err
+	}
+
+	content, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return bytes.TrimSpace(content), nil
+}
 
 func checkRedirect(c *http.Client) func(*http.Request, []*http.Request) error {
 	return func(req *http.Request, via []*http.Request) error {
@@ -364,13 +442,13 @@ func getServersList(c *http.Client, server string) (*url.URL, error) {
 	return u, nil
 }
 
-func Connect(server, username, password, sessionID string, closeSession, sel, debug bool, profileIndex int) error {
-	if server == "" {
+func Connect(opts *Options) error {
+	if opts.Server == "" {
 		fmt.Print("Enter server address: ")
-		fmt.Scanln(&server)
+		fmt.Scanln(&opts.Server)
 	}
 
-	u, err := url.Parse(server)
+	u, err := url.Parse(opts.Server)
 	if err != nil {
 		return fmt.Errorf("failed to parse server hostname: %s", err)
 	}
@@ -381,7 +459,7 @@ func Connect(server, username, password, sessionID string, closeSession, sel, de
 		}
 	}
 	if u.Host == "" {
-		u, err = url.Parse(fmt.Sprintf("https://%s", server))
+		u, err = url.Parse(fmt.Sprintf("https://%s", opts.Server))
 		if err != nil {
 			return fmt.Errorf("failed to parse server hostname: %s", err)
 		}
@@ -389,10 +467,10 @@ func Connect(server, username, password, sessionID string, closeSession, sel, de
 			return fmt.Errorf("failed to parse server hostname: %s", err)
 		}
 	}
-	server = u.Host
+	opts.Server = u.Host
 
 	// read config
-	cfg, err := config.ReadConfig(debug)
+	cfg, err := config.ReadConfig(opts.Debug)
 	if err != nil {
 		return err
 	}
@@ -405,41 +483,44 @@ func Connect(server, username, password, sessionID string, closeSession, sel, de
 	client := &http.Client{Jar: cookieJar}
 	client.CheckRedirect = checkRedirect(client)
 
-	if debug {
+	tlsConf, err := tlsConfig(opts, cfg.InsecureTLS)
+	if err != nil {
+		return fmt.Errorf("failed to build TLS config: %v", err)
+	}
+	transport := &http.Transport{
+		TLSClientConfig: tlsConf,
+	}
+	if opts.Debug {
 		client.Transport = &RoundTripper{
-			Rt: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: cfg.InsecureTLS},
-			},
+			Rt:     transport,
 			Logger: &logger{},
 		}
 	} else {
-		client.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: cfg.InsecureTLS},
-		}
+		client.Transport = transport
 	}
 
 	// when server select list has been chosen
-	if sel {
-		u, err = getServersList(client, server)
+	if opts.Sel {
+		u, err = getServersList(client, opts.Server)
 		if err != nil {
 			return err
 		}
-		server = u.Host
+		opts.Server = u.Host
 	}
 
 	// read cookies
-	cookie.ReadCookies(client, u, cfg, sessionID)
+	cookie.ReadCookies(client, u, cfg, opts.SessionID)
 
 	if len(client.Jar.Cookies(u)) == 0 {
 		// need to login
-		if err := login(client, server, &username, &password); err != nil {
+		if err := login(client, opts.Server, &opts.Username, &opts.Password); err != nil {
 			return fmt.Errorf("failed to login: %s", err)
 		}
 	} else {
 		log.Printf("Reusing saved HTTPS VPN session for %s", u.Host)
 	}
 
-	resp, err := getProfiles(client, server)
+	resp, err := getProfiles(client, opts.Server)
 	if err != nil {
 		return fmt.Errorf("failed to get VPN profiles: %s", err)
 	}
@@ -452,12 +533,12 @@ func Connect(server, username, password, sessionID string, closeSession, sel, de
 		}
 		resp.Body.Close()
 
-		if err := login(client, server, &username, &password); err != nil {
+		if err := login(client, opts.Server, &opts.Username, &opts.Password); err != nil {
 			return fmt.Errorf("failed to login: %s", err)
 		}
 
 		// new request
-		resp, err = getProfiles(client, server)
+		resp, err = getProfiles(client, opts.Server)
 		if err != nil {
 			return fmt.Errorf("failed to get VPN profiles: %s", err)
 		}
@@ -467,13 +548,13 @@ func Connect(server, username, password, sessionID string, closeSession, sel, de
 		return fmt.Errorf("wrong response code on profiles get: %d", resp.StatusCode)
 	}
 
-	profile, err := parseProfile(resp.Body, profileIndex)
+	profile, err := parseProfile(resp.Body, opts.ProfileIndex)
 	if err != nil {
 		return fmt.Errorf("failed to parse VPN profiles: %s", err)
 	}
 
 	// read config, returned by F5
-	cfg.F5Config, err = getConnectionOptions(client, server, profile)
+	cfg.F5Config, err = getConnectionOptions(client, opts.Server, profile)
 	if err != nil {
 		return fmt.Errorf("failed to get VPN connection options: %s", err)
 	}
@@ -484,7 +565,7 @@ func Connect(server, username, password, sessionID string, closeSession, sel, de
 	}
 
 	// TLS
-	l, err := link.InitConnection(server, cfg)
+	l, err := link.InitConnection(opts.Server, cfg, tlsConf)
 	if err != nil {
 		return err
 	}
@@ -505,7 +586,7 @@ func Connect(server, username, password, sessionID string, closeSession, sel, de
 				"noipv6", // Unsupported protocol 'IPv6 Control Protocol' (0x8057) received
 			)
 		}
-		if debug {
+		if opts.Debug {
 			cfg.PPPdArgs = append(cfg.PPPdArgs,
 				"debug",
 				"kdebug", "1",
@@ -587,8 +668,8 @@ func Connect(server, username, password, sessionID string, closeSession, sel, de
 
 	// close HTTPS VPN session
 	// next VPN connection will require credentials to auth
-	if closeSession {
-		closeVPNSession(client, server)
+	if opts.CloseSession {
+		closeVPNSession(client, opts.Server)
 	}
 
 	return l.Ret

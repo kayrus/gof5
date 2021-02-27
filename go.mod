@@ -7,6 +7,7 @@ require (
 	github.com/hpcloud/tail v1.0.0
 	github.com/manifoldco/promptui v0.8.0
 	github.com/miekg/dns v1.1.35
+	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pion/dtls/v2 v2.0.4
 	github.com/songgao/water v0.0.0-20200317203138-2b4b6d7c09d8
 	github.com/vishvananda/netlink v1.1.0

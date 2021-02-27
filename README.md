@@ -54,6 +54,14 @@ Use `--select` to choose a VPN server from the list, known to a current server.
 
 Use `--profile-index` to define a custom F5 VPN profile index.
 
+### CA certificate and TLS keypair
+
+Use options below to specify custom TLS parameters:
+
+* `--ca-cert` - path to a custom CA certificate
+* `--cert` - path to a user TLS certificate
+* `--key` - path to a user TLS key
+
 ## Configuration
 
 You can define an extra `~/.gof5/config.yaml` file with contents:
