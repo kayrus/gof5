@@ -259,11 +259,14 @@ func (l *vpnLink) WaitAndConfig(cfg *config.Config) {
 
 	// exclude F5 gateway IPs
 	for _, dst := range l.serverIPs {
-		local := &net.IPNet{
-			IP:   dst.To4(),
-			Mask: net.CIDRMask(32, 32),
+		// exclude only ipv4
+		if v := dst.To4(); v != nil {
+			local := &net.IPNet{
+				IP:   v,
+				Mask: net.CIDRMask(32, 32),
+			}
+			routes.RemoveNet(local)
 		}
-		routes.RemoveNet(local)
 	}
 
 	var gw net.IP
