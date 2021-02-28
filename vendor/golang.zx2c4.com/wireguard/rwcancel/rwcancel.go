@@ -2,7 +2,7 @@
 
 /* SPDX-License-Identifier: MIT
  *
- * Copyright (C) 2017-2020 WireGuard LLC. All Rights Reserved.
+ * Copyright (C) 2017-2021 WireGuard LLC. All Rights Reserved.
  */
 
 // Package rwcancel implements cancelable read/write operations on
@@ -46,17 +46,7 @@ func NewRWCancel(fd int) (*RWCancel, error) {
 }
 
 func RetryAfterError(err error) bool {
-	if pe, ok := err.(*os.PathError); ok {
-		err = pe.Err
-	}
-	if errno, ok := err.(syscall.Errno); ok {
-		switch errno {
-		case syscall.EAGAIN, syscall.EINTR:
-			return true
-		}
-
-	}
-	return false
+	return errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EINTR)
 }
 
 func (rw *RWCancel) ReadyRead() bool {
@@ -128,4 +118,9 @@ func (rw *RWCancel) Write(p []byte) (n int, err error) {
 func (rw *RWCancel) Cancel() (err error) {
 	_, err = rw.closingWriter.Write([]byte{0})
 	return
+}
+
+func (rw *RWCancel) Close() {
+	rw.closingReader.Close()
+	rw.closingWriter.Close()
 }

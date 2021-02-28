@@ -14,7 +14,7 @@ xattr -d com.apple.quarantine ./path/to/gof5_darwin
 
 ## FreeBSD
 
-On FreeBSD only `wireguard` or `ppp` (a wrapper around the ppp binary) drivers work. However the `wireguard` driver requires a [FreeBSD patch](freebsd.patch) applied before the compilation.
+On FreeBSD only `wireguard` or `pppd` (a wrapper around the ppp binary) drivers work.
 
 ## Windows
 

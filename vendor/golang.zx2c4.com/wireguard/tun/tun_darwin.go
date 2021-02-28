@@ -1,15 +1,16 @@
 /* SPDX-License-Identifier: MIT
  *
- * Copyright (C) 2017-2020 WireGuard LLC. All Rights Reserved.
+ * Copyright (C) 2017-2021 WireGuard LLC. All Rights Reserved.
  */
 
 package tun
 
 import (
+	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -26,18 +27,15 @@ type NativeTun struct {
 	events      chan Event
 	errors      chan error
 	routeSocket int
+	closeOnce   sync.Once
 }
 
 func retryInterfaceByIndex(index int) (iface *net.Interface, err error) {
 	for i := 0; i < 20; i++ {
 		iface, err = net.InterfaceByIndex(index)
-		if err != nil {
-			if opErr, ok := err.(*net.OpError); ok {
-				if syscallErr, ok := opErr.Err.(*os.SyscallError); ok && syscallErr.Err == syscall.ENOMEM {
-					time.Sleep(time.Duration(i) * time.Second / 3)
-					continue
-				}
-			}
+		if err != nil && errors.Is(err, syscall.ENOMEM) {
+			time.Sleep(time.Duration(i) * time.Second / 3)
+			continue
 		}
 		return iface, err
 	}
@@ -141,7 +139,7 @@ func CreateTUN(name string, mtu int) (Device, error) {
 	if err == nil && name == "utun" {
 		fname := os.Getenv("WG_TUN_NAME_FILE")
 		if fname != "" {
-			ioutil.WriteFile(fname, []byte(tun.(*NativeTun).name+"\n"), 0400)
+			os.WriteFile(fname, []byte(tun.(*NativeTun).name+"\n"), 0400)
 		}
 	}
 
@@ -260,14 +258,16 @@ func (tun *NativeTun) Flush() error {
 }
 
 func (tun *NativeTun) Close() error {
-	var err2 error
-	err1 := tun.tunFile.Close()
-	if tun.routeSocket != -1 {
-		unix.Shutdown(tun.routeSocket, unix.SHUT_RDWR)
-		err2 = unix.Close(tun.routeSocket)
-	} else if tun.events != nil {
-		close(tun.events)
-	}
+	var err1, err2 error
+	tun.closeOnce.Do(func() {
+		err1 = tun.tunFile.Close()
+		if tun.routeSocket != -1 {
+			unix.Shutdown(tun.routeSocket, unix.SHUT_RDWR)
+			err2 = unix.Close(tun.routeSocket)
+		} else if tun.events != nil {
+			close(tun.events)
+		}
+	})
 	if err1 != nil {
 		return err1
 	}

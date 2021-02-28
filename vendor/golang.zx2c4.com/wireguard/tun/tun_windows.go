@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT
  *
- * Copyright (C) 2018-2020 WireGuard LLC. All Rights Reserved.
+ * Copyright (C) 2018-2021 WireGuard LLC. All Rights Reserved.
  */
 
 package tun
@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 	"sync/atomic"
 	"time"
 	_ "unsafe"
@@ -42,17 +43,11 @@ type NativeTun struct {
 	rate      rateJuggler
 	session   wintun.Session
 	readWait  windows.Handle
+	closeOnce sync.Once
 }
 
-var WintunPool *wintun.Pool
-
-func init() {
-	var err error
-	WintunPool, err = wintun.MakePool("WireGuard")
-	if err != nil {
-		panic(fmt.Errorf("Failed to make pool: %w", err))
-	}
-}
+var WintunPool, _ = wintun.MakePool("WireGuard")
+var WintunStaticRequestedGUID *windows.GUID
 
 //go:linkname procyield runtime.procyield
 func procyield(cycles uint32)
@@ -65,7 +60,7 @@ func nanotime() int64
 // interface with the same name exist, it is reused.
 //
 func CreateTUN(ifname string, mtu int) (Device, error) {
-	return CreateTUNWithRequestedGUID(ifname, nil, mtu)
+	return CreateTUNWithRequestedGUID(ifname, WintunStaticRequestedGUID, mtu)
 }
 
 //
@@ -129,13 +124,15 @@ func (tun *NativeTun) Events() chan Event {
 }
 
 func (tun *NativeTun) Close() error {
-	tun.close = true
-	tun.session.End()
 	var err error
-	if tun.wt != nil {
-		_, err = tun.wt.Delete(false)
-	}
-	close(tun.events)
+	tun.closeOnce.Do(func() {
+		tun.close = true
+		tun.session.End()
+		if tun.wt != nil {
+			_, err = tun.wt.Delete(false)
+		}
+		close(tun.events)
+	})
 	return err
 }
 

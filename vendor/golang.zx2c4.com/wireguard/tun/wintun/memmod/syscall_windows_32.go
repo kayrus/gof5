@@ -1,8 +1,8 @@
-// +build 386 arm
+// +build windows,386 windows,arm
 
 /* SPDX-License-Identifier: MIT
  *
- * Copyright (C) 2020 WireGuard LLC. All Rights Reserved.
+ * Copyright (C) 2017-2021 WireGuard LLC. All Rights Reserved.
  */
 
 package memmod

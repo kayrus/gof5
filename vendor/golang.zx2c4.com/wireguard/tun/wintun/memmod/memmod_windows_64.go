@@ -1,8 +1,8 @@
-// +build amd64 arm64
+// +build windows,amd64 windows,arm64
 
 /* SPDX-License-Identifier: MIT
  *
- * Copyright (C) 2020 WireGuard LLC. All Rights Reserved.
+ * Copyright (C) 2017-2021 WireGuard LLC. All Rights Reserved.
  */
 
 package memmod
