@@ -12,6 +12,16 @@ import (
 
 var errPacketTooBig = errors.New("packet too big")
 
+// BufferPacketType allow the Buffer to know which packet protocol is writing.
+type BufferPacketType int
+
+const (
+	// RTPBufferPacket indicates the Buffer that is handling RTP packets
+	RTPBufferPacket BufferPacketType = 1
+	// RTCPBufferPacket indicates the Buffer that is handling RTCP packets
+	RTCPBufferPacket BufferPacketType = 2
+)
+
 // Buffer allows writing packets to an intermediate buffer, which can then be read form.
 // This is verify similar to bytes.Buffer but avoids combining multiple writes into a single read.
 type Buffer struct {
@@ -35,9 +45,11 @@ type Buffer struct {
 	readDeadline *deadline.Deadline
 }
 
-const minSize = 2048
-const cutoffSize = 128 * 1024
-const maxSize = 4 * 1024 * 1024
+const (
+	minSize    = 2048
+	cutoffSize = 128 * 1024
+	maxSize    = 4 * 1024 * 1024
+)
 
 // NewBuffer creates a new Buffer.
 func NewBuffer() *Buffer {
@@ -184,7 +196,7 @@ func (b *Buffer) Read(packet []byte) (n int, err error) {
 	// Return immediately if the deadline is already exceeded.
 	select {
 	case <-b.readDeadline.Done():
-		return 0, &netError{errTimeout, true, true}
+		return 0, &netError{ErrTimeout, true, true}
 	default:
 	}
 
@@ -253,7 +265,7 @@ func (b *Buffer) Read(packet []byte) (n int, err error) {
 
 		select {
 		case <-b.readDeadline.Done():
-			return 0, &netError{errTimeout, true, true}
+			return 0, &netError{ErrTimeout, true, true}
 		case <-notify:
 		}
 	}

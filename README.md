@@ -72,6 +72,9 @@ listenDNS: 127.0.0.1
 # rewrite /etc/resolv.conf instead of renaming
 # required in ChromeOS, where /etc/resolv.conf cannot be renamed
 rewriteResolv: false
+# experimental DTLSv1.2 support
+# F5 BIG-IP server should have enabled DTLSv1.2 support
+dtls: false
 # TLS certificate check
 insecureTLS: false
 # Enable IPv6

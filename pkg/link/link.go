@@ -110,6 +110,8 @@ func InitConnection(server string, cfg *config.Config, tlsConfig *tls.Config) (*
 			return nil, fmt.Errorf("failed to resolve UDP address: %s", err)
 		}
 		conf := &dtls.Config{
+			RootCAs:            tlsConfig.RootCAs,
+			Certificates:       tlsConfig.Certificates,
 			InsecureSkipVerify: tlsConfig.InsecureSkipVerify,
 			ServerName:         server,
 		}
@@ -122,41 +124,41 @@ func InitConnection(server string, cfg *config.Config, tlsConfig *tls.Config) (*
 		if err != nil {
 			return nil, fmt.Errorf("failed to dial %s:443: %s", server, err)
 		}
+	}
 
-		req, err := http.NewRequest("GET", getURL, nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create VPN session request: %s", err)
+	req, err := http.NewRequest("GET", getURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create VPN session request: %s", err)
+	}
+	req.Header.Set("User-Agent", userAgentVPN)
+	err = req.Write(l.HTTPConn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send VPN session request: %s", err)
+	}
+
+	if l.debug {
+		log.Printf("URL: %s", getURL)
+	}
+
+	resp, err := http.ReadResponse(bufio.NewReader(l.HTTPConn), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get initial VPN connection response: %s", err)
+	}
+	resp.Body.Close()
+
+	l.localIPv4 = net.ParseIP(resp.Header.Get("X-VPN-client-IP"))
+	l.serverIPv4 = net.ParseIP(resp.Header.Get("X-VPN-server-IP"))
+	l.localIPv6 = net.ParseIP(resp.Header.Get("X-VPN-client-IPv6"))
+	l.serverIPv6 = net.ParseIP(resp.Header.Get("X-VPN-server-IPv6"))
+
+	if l.debug {
+		log.Printf("Client IP: %s", l.localIPv4)
+		log.Printf("Server IP: %s", l.serverIPv4)
+		if l.localIPv6 != nil {
+			log.Printf("Client IPv6: %s", l.localIPv6)
 		}
-		req.Header.Set("User-Agent", userAgentVPN)
-		err = req.Write(l.HTTPConn)
-		if err != nil {
-			return nil, fmt.Errorf("failed to send VPN session request: %s", err)
-		}
-
-		if l.debug {
-			log.Printf("URL: %s", getURL)
-		}
-
-		resp, err := http.ReadResponse(bufio.NewReader(l.HTTPConn), nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get initial VPN connection response: %s", err)
-		}
-		resp.Body.Close()
-
-		l.localIPv4 = net.ParseIP(resp.Header.Get("X-VPN-client-IP"))
-		l.serverIPv4 = net.ParseIP(resp.Header.Get("X-VPN-server-IP"))
-		l.localIPv6 = net.ParseIP(resp.Header.Get("X-VPN-client-IPv6"))
-		l.serverIPv6 = net.ParseIP(resp.Header.Get("X-VPN-server-IPv6"))
-
-		if l.debug {
-			log.Printf("Client IP: %s", l.localIPv4)
-			log.Printf("Server IP: %s", l.serverIPv4)
-			if l.localIPv6 != nil {
-				log.Printf("Client IPv6: %s", l.localIPv6)
-			}
-			if l.localIPv6 != nil {
-				log.Printf("Server IPv6: %s", l.serverIPv6)
-			}
+		if l.localIPv6 != nil {
+			log.Printf("Server IPv6: %s", l.serverIPv6)
 		}
 	}
 
