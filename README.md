@@ -18,7 +18,7 @@ On FreeBSD only `wireguard` or `pppd` (a wrapper around the ppp binary) drivers 
 
 ## Windows
 
-Windows version requires `powershell.exe` and doesn't support `pppd` driver.
+Windows version doesn't support `pppd` driver.
 If gof5 cannot listen to 53 DNS port, try to comment out the `dns:` list in a config file.
 
 ## ChromeOS
@@ -70,7 +70,7 @@ You can define an extra `~/.gof5/config.yaml` file with contents:
 # DNS proxy listen address, defaults to 127.0.0.1
 listenDNS: 127.0.0.1
 # rewrite /etc/resolv.conf instead of renaming
-# required in ChromeOS, where /etc/resolv.conf cannot be renamed
+# Linux only, required in ChromeOS, where /etc/resolv.conf cannot be renamed
 rewriteResolv: false
 # experimental DTLSv1.2 support
 # F5 BIG-IP server should have enabled DTLSv1.2 support
@@ -80,7 +80,7 @@ insecureTLS: false
 # Enable IPv6
 ipv6: false
 # driver specifies which tunnel driver to use.
-# supported values are: wireguard, water or pppd.
+# supported values are: wireguard or pppd.
 # wireguard is default.
 # pppd requires a pppd or ppp (in FreeBSD) binary
 driver: wireguard

@@ -1,19 +1,15 @@
 package config
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
-	"os/exec"
 	"os/user"
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 
 	"github.com/kayrus/gof5/pkg/util"
 
@@ -21,58 +17,14 @@ import (
 )
 
 const (
-	ResolvPath = "/etc/resolv.conf"
 	configDir  = ".gof5"
 	configName = "config.yaml"
 )
 
 var (
 	defaultDNSListenAddr = net.IPv4(127, 0, 0, 1).To4()
-	supportedDrivers     = []string{"wireguard", "water", "pppd"}
+	supportedDrivers     = []string{"wireguard", "pppd"}
 )
-
-func parseIP(ip string) net.IP {
-	v := net.ParseIP(ip)
-	if v == nil {
-		return nil
-	}
-	if v := v.To4(); v != nil {
-		return v
-	} else if v := v.To16(); v != nil {
-		return v
-	}
-	return nil
-}
-
-func parseResolvConf(cfg *Config) {
-	if cfg.ResolvConf == nil {
-		return
-	}
-
-	buf := bufio.NewReader(bytes.NewReader(cfg.ResolvConf))
-	for line, isPrefix, err := buf.ReadLine(); err == nil && !isPrefix; line, isPrefix, err = buf.ReadLine() {
-		if len(line) > 0 && (line[0] == ';' || line[0] == '#') {
-			continue
-		}
-
-		f := strings.FieldsFunc(string(line), util.SplitFunc)
-		if len(f) < 1 {
-			continue
-		}
-		switch f[0] {
-		case "nameserver":
-			if len(f) > 1 && len(cfg.DNSServers) < 3 {
-				v := parseIP(f[1])
-				if v == nil {
-					continue
-				}
-				cfg.DNSServers = append(cfg.DNSServers, v)
-			}
-		case "search":
-			cfg.DNSSearch = append(cfg.DNSSearch, f[1:]...)
-		}
-	}
-}
 
 func ReadConfig(debug bool) (*Config, error) {
 	var err error
@@ -153,37 +105,6 @@ func ReadConfig(debug bool) (*Config, error) {
 
 	if !util.StrSliceContains(supportedDrivers, cfg.Driver) {
 		return nil, fmt.Errorf("%q driver is unsupported, supported drivers are: %q", cfg.Driver, supportedDrivers)
-	}
-
-	if !cfg.DisableDNS {
-		// read current resolv.conf
-		cfg.ResolvConf, err = ioutil.ReadFile(ResolvPath)
-		if err != nil && !os.IsNotExist(err) {
-			return nil, fmt.Errorf("cannot read %s: %s", ResolvPath, err)
-		}
-	}
-
-	if len(cfg.DNSServers) == 0 {
-		if runtime.GOOS == "windows" {
-			// detect current DNS servers
-			args := []string{
-				"-Command",
-				"Get-DnsClientServerAddress -AddressFamily ipv4 | Select-Object -ExpandProperty ServerAddresses",
-			}
-			out, err := exec.Command("powershell.exe", args...).Output()
-			if err != nil {
-				return nil, fmt.Errorf("failed to detect current DNS servers: %v", err)
-			}
-			for _, v := range strings.FieldsFunc(string(out), util.SplitFunc) {
-				v := parseIP(v)
-				if v == nil {
-					continue
-				}
-				cfg.DNSServers = append(cfg.DNSServers, v)
-			}
-		} else {
-			parseResolvConf(cfg)
-		}
 	}
 
 	if cfg.ListenDNS == nil {

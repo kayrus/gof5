@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"net"
@@ -12,23 +13,21 @@ import (
 	"os"
 	"runtime"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/kayrus/gof5/pkg/config"
 	"github.com/kayrus/gof5/pkg/dns"
-	"github.com/kayrus/gof5/pkg/resolv"
-	"github.com/kayrus/gof5/pkg/route"
 
 	"github.com/fatih/color"
+	"github.com/kayrus/tuncfg/resolv"
+	"github.com/kayrus/tuncfg/route"
+	"github.com/kayrus/tuncfg/tun"
 	"github.com/pion/dtls/v2"
-	"github.com/songgao/water"
-	"golang.zx2c4.com/wireguard/tun"
 )
 
 const (
+	// TUN MTU should not be bigger than buffer size
 	bufferSize   = 1500
-	defaultMTU   = 1420
 	userAgentVPN = "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; Trident/6.0; F5 Networks Client)"
 )
 
@@ -36,30 +35,26 @@ var colorlog = log.New(color.Error, "", log.LstdFlags)
 
 type vpnLink struct {
 	sync.Mutex
-	HTTPConn    f5Conn
-	Ret         error
+	HTTPConn    io.ReadWriteCloser
 	TermChan    chan os.Signal
+	ErrChan     chan error
+	PppdErrChan chan error
+	iface       io.ReadWriteCloser
 	name        string
-	routesReady bool
-	dnsReady    bool
-	iface       f5Tun
-	errChan     chan error
-	upChan      chan bool
-	nameChan    chan string
-	serverIPs   []net.IP
-	localIPv4   net.IP
-	serverIPv4  net.IP
-	localIPv6   net.IP
-	serverIPv6  net.IP
-	mtu         []byte
-	mtuInt      uint16
-	debug       bool
-}
-
-type f5Conn interface {
-	Write([]byte) (int, error)
-	Read([]byte) (int, error)
-	Close() error
+	// pppUp is used to wait for the PPP handshake (wireguard only)
+	pppUp chan struct{}
+	// tunUp is used to wait for the TUN interface (wireguard and pppd)
+	tunUp         chan struct{}
+	serverIPs     []net.IP
+	localIPv4     net.IP
+	serverIPv4    net.IP
+	localIPv6     net.IP
+	serverIPv6    net.IP
+	mtu           []byte
+	mtuInt        uint16
+	debug         bool
+	routeHandler  *route.Handler
+	resolvHandler *resolv.Handler
 }
 
 func randomHostname(n int) []byte {
@@ -94,12 +89,13 @@ func InitConnection(server string, cfg *config.Config, tlsConfig *tls.Config) (*
 
 	// define link channels
 	l := &vpnLink{
-		serverIPs: serverIPs,
-		errChan:   make(chan error, 1),
-		upChan:    make(chan bool, 1),
-		nameChan:  make(chan string, 1),
-		TermChan:  make(chan os.Signal, 1),
-		debug:     cfg.Debug,
+		TermChan:    make(chan os.Signal, 1),
+		ErrChan:     make(chan error, 1),
+		PppdErrChan: make(chan error, 1),
+		serverIPs:   serverIPs,
+		pppUp:       make(chan struct{}, 1),
+		tunUp:       make(chan struct{}, 1),
+		debug:       cfg.Debug,
 	}
 
 	if cfg.DTLS && cfg.F5Config.Object.TunnelDTLS {
@@ -162,92 +158,116 @@ func InitConnection(server string, cfg *config.Config, tlsConfig *tls.Config) (*
 		}
 	}
 
-	switch cfg.Driver {
-	case "water":
-		log.Printf("Using water module to create tunnel")
-		device, err := water.New(water.Config{
-			DeviceType: water.TUN,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create a %q interface: %s", water.TUN, err)
-		}
-
-		l.name = device.Name()
-		log.Printf("Created %s interface", l.name)
-		l.iface = f5Tun{f5Conn: device}
-	case "wireguard":
-		log.Printf("Using wireguard module to create tunnel")
-		ifname := ""
-		switch runtime.GOOS {
-		case "darwin":
-			ifname = "utun"
-		case "windows":
-			ifname = "gof5"
-		}
-		device, err := tun.CreateTUN(ifname, defaultMTU)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create an interface: %s", err)
-		}
-
-		l.name, err = device.Name()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get an interface name: %s", err)
-		}
-		log.Printf("Created %s interface", l.name)
-		l.iface = f5Tun{Device: device}
-	}
-
 	return l, nil
 }
 
-// error handler
-func (l *vpnLink) ErrorHandler() {
-	l.Ret = <-l.errChan
-	l.TermChan <- syscall.SIGINT
+func (l *vpnLink) createTunDevice() error {
+	if l.mtuInt+tun.Offset > bufferSize {
+		return fmt.Errorf("MTU exceeds the %d buffer limit", bufferSize)
+	}
+
+	log.Printf("Using wireguard module to create tunnel")
+	ifname := ""
+	switch runtime.GOOS {
+	case "darwin":
+		ifname = "utun"
+	case "windows":
+		ifname = "gof5"
+	}
+
+	local := &net.IPNet{
+		IP:   l.localIPv4,
+		Mask: net.CIDRMask(32, 32),
+	}
+	gw := &net.IPNet{
+		IP:   l.serverIPv4,
+		Mask: net.CIDRMask(32, 32),
+	}
+	tunDev, err := tun.OpenTunDevice(local, gw, ifname, int(l.mtuInt))
+	if err != nil {
+		return fmt.Errorf("failed to create an interface: %s", err)
+	}
+	l.name, err = tunDev.Name()
+	if err != nil {
+		return fmt.Errorf("failed to get an interface name: %s", err)
+	}
+
+	log.Printf("Created %s interface", l.name)
+	l.iface = &tun.Tunnel{NativeTun: tunDev}
+
+	// can now process the traffic
+	close(l.tunUp)
+
+	return nil
 }
 
 // wait for pppd and config DNS and routes
 func (l *vpnLink) WaitAndConfig(cfg *config.Config) {
-	var err error
-	// wait for tun name
-	l.name = <-l.nameChan
-	if l.name == "" {
-		l.errChan <- fmt.Errorf("failed to detect tunnel name")
-		return
-	}
-
-	if cfg.Driver == "pppd" {
-		// wait for tun up
-		if !<-l.upChan {
-			l.errChan <- fmt.Errorf("unexpected tun status event")
-			return
-		}
-	}
+	// wait for ppp handshake completed
+	<-l.pppUp
 
 	l.Lock()
 	defer l.Unlock()
 
+	var err error
+
+	if cfg.Driver != "pppd" {
+		// create TUN
+		err = l.createTunDevice()
+		if err != nil {
+			log.Printf("WaitAndConfig error: %v", err)
+			l.ErrChan <- err
+			log.Printf("WaitAndConfig error sent")
+			return
+		}
+	}
+
 	if !cfg.DisableDNS {
+		// this is used only in linux/freebsd to store /etc/resolv.conf backup
+		resolv.AppName = "gof5"
+
+		var dnsServers []net.IP
+		dnsSuffixes := cfg.F5Config.Object.DNSSuffix
+		if len(cfg.DNS) == 0 {
+			// route everything through VPN gatewy
+			dnsServers = cfg.F5Config.Object.DNS
+		} else {
+			// route only configured suffixes via local DNS proxy
+			dnsServers = []net.IP{cfg.ListenDNS}
+		}
 		// define DNS servers, provided by F5
-		if err = resolv.ConfigureDNS(cfg, l.name); err != nil {
-			l.errChan <- err
+		l.resolvHandler, err = resolv.New(l.name, dnsServers, dnsSuffixes, cfg.RewriteResolv)
+		if err != nil {
+			l.ErrChan <- err
 			return
 		}
 
 		if len(cfg.DNS) > 0 {
-			dns.Start(cfg, l.errChan)
+			// combine local network search with VPN gateway search
+			dnsSuffixes = append(l.resolvHandler.GetOriginalSuffixes(), cfg.F5Config.Object.DNSSuffix...)
+			log.Printf("Setting %q suffixes", dnsSuffixes)
+			l.resolvHandler.SetSuffixes(dnsSuffixes)
 		}
-		l.dnsReady = true
+
+		err = l.resolvHandler.Set()
+		if err != nil {
+			l.ErrChan <- err
+			return
+		}
+
+		// get default DNS servers, when config has empty list
+		if len(cfg.DNSServers) == 0 {
+			cfg.DNSServers = l.resolvHandler.GetOriginalDNS()
+		}
+
+		// TODO: check empty cfg.DNSServers
+		if len(cfg.DNS) > 0 {
+			dns.Start(cfg, l.ErrChan)
+		}
 	}
 
 	// set routes
 	log.Printf("Setting routes on %s interface", l.name)
-	if cfg.Driver != "pppd" {
-		if err := route.SetInterface(l.name, l.localIPv4, l.serverIPv4, int(l.mtuInt)); err != nil {
-			l.errChan <- err
-			return
-		}
-	}
 
 	// set custom routes
 	routes := cfg.Routes
@@ -273,16 +293,14 @@ func (l *vpnLink) WaitAndConfig(cfg *config.Config) {
 		// windows requires both gateway and interface name
 		gw = l.serverIPv4
 	}
-	for _, cidr := range routes.GetNetworks() {
-		if l.debug {
-			log.Printf("Adding %s route", cidr)
-		}
-		if err = route.RouteAdd(cidr, gw, 0, l.name); err != nil {
-			l.errChan <- err
-			return
-		}
+
+	l.routeHandler, err = route.New(l.name, routes.GetNetworks(), gw, 0)
+	if err != nil {
+		l.ErrChan <- err
+		return
 	}
-	l.routesReady = true
+	l.routeHandler.Add()
+
 	colorlog.Printf(color.HiGreenString("Connection established"))
 }
 
@@ -291,37 +309,23 @@ func (l *vpnLink) RestoreConfig(cfg *config.Config) {
 	l.Lock()
 	defer l.Unlock()
 
-	defer func() {
-		if l.iface.Device != nil {
-			l.iface.Device.Close()
-		}
-		if l.iface.f5Conn != nil {
-			l.iface.f5Conn.Close()
-		}
-	}()
+	if l.routeHandler != nil {
+		log.Printf("Removing routes from %s interface", l.name)
+		l.routeHandler.Del()
+	}
 
 	if !cfg.DisableDNS {
-		if l.dnsReady {
-			resolv.RestoreDNS(cfg)
+		if l.resolvHandler != nil {
+			log.Printf("Restoring DNS settings")
+			l.resolvHandler.Restore()
 		}
 	}
 
-	var gw net.IP
-	if runtime.GOOS == "windows" {
-		// windows requires both gateway and interface name
-		gw = l.serverIPv4
-	}
-	if l.routesReady {
-		if l.Ret == nil {
-			log.Printf("Removing routes from %s interface", l.name)
-			routes := cfg.Routes
-			if routes == nil {
-				routes = cfg.F5Config.Object.Routes
-			}
-			for _, cidr := range routes.GetNetworks() {
-				if err := route.RouteDel(cidr, gw, 0, l.name); err != nil {
-					log.Print(err)
-				}
+	if cfg.Driver != "pppd" {
+		if l.iface != nil {
+			err := l.iface.Close()
+			if err != nil {
+				log.Printf("error closing interface: %v", err)
 			}
 		}
 	}

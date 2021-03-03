@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"net/url"
-	"os"
 	"strings"
 
 	"github.com/kayrus/gof5/pkg/util"
@@ -30,13 +29,9 @@ type Config struct {
 	// rewrite /etc/resolv.conf instead of renaming
 	// required in ChromeOS, where /etc/resolv.conf cannot be renamed
 	RewriteResolv bool `yaml:"rewriteResolv"`
-	// contains original /etc/resolv.conf permissions
-	ResolvConfPerm os.FileMode `yaml:"-"`
 	// list of DNS local servers
 	// when list is empty, parsed from /etc/resolv.conf
 	DNSServers []net.IP `yaml:"-"`
-	// the list of "search" entries, parsed from the /etc/resolv.conf
-	DNSSearch []string `yaml:"-"`
 	// config path
 	Path string `yaml:"-"`
 	// current user or sudo user UID
