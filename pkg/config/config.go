@@ -22,8 +22,10 @@ const (
 )
 
 var (
-	defaultDNSListenAddr = net.IPv4(127, 0, 0, 1).To4()
-	supportedDrivers     = []string{"wireguard", "pppd"}
+	defaultDNSListenAddr = net.IPv4(127, 0, 0, 0xf5).To4()
+	// BSD systems don't support listeniing on 127.0.0.1+N
+	defaultBSDDNSListenAddr = net.IPv4(127, 0, 0, 1).To4()
+	supportedDrivers        = []string{"wireguard", "pppd"}
 )
 
 func ReadConfig(debug bool) (*Config, error) {
@@ -108,7 +110,13 @@ func ReadConfig(debug bool) (*Config, error) {
 	}
 
 	if cfg.ListenDNS == nil {
-		cfg.ListenDNS = defaultDNSListenAddr
+		switch runtime.GOOS {
+		case "freebsd",
+			"darwin":
+			cfg.ListenDNS = defaultBSDDNSListenAddr
+		default:
+			cfg.ListenDNS = defaultDNSListenAddr
+		}
 	}
 
 	cfg.Path = configPath

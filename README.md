@@ -19,7 +19,6 @@ On FreeBSD only `wireguard` or `pppd` (a wrapper around the ppp binary) drivers 
 ## Windows
 
 Windows version doesn't support `pppd` driver.
-If gof5 cannot listen to 53 DNS port, try to comment out the `dns:` list in a config file.
 
 ## ChromeOS
 
@@ -67,8 +66,9 @@ Use options below to specify custom TLS parameters:
 You can define an extra `~/.gof5/config.yaml` file with contents:
 
 ```yaml
-# DNS proxy listen address, defaults to 127.0.0.1
-listenDNS: 127.0.0.1
+# DNS proxy listen address, defaults to 127.0.0.245
+# In BSD defaults to 127.0.0.1
+# listenDNS: 127.0.0.1
 # rewrite /etc/resolv.conf instead of renaming
 # Linux only, required in ChromeOS, where /etc/resolv.conf cannot be renamed
 rewriteResolv: false
@@ -87,17 +87,17 @@ driver: wireguard
 # When pppd driver is used, you can specify a list of extra pppd arguments
 PPPdArgs: []
 # disableDNS allows to completely disable DNS handling,
-# i.e. don't alter the /etc/resolv.conf file at all
+# i.e. don't alter system DNS (e.g. /etc/resolv.conf) at all
 disableDNS: false
-# a list of DNS zones to be resolved by VPN DNS servers
-# when empty, every DNS query will be resolved by VPN DNS servers
+# A list of DNS zones to be resolved by VPN DNS servers
+# When empty, every DNS query will be resolved by VPN DNS servers
 dns:
 - .corp.int.
 - .corp.
 # for reverse DNS lookup
 - .in-addr.arpa.
 # a list of primary DNS servers
-# Primary DNS servers. When empty, will be parsed from /etc/resolv.conf
+# Primary DNS servers. When empty, system DNS servers will be used
 dnsServers:
 - 8.8.8.8
 - 8.8.4.4
