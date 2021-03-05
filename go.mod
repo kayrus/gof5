@@ -7,13 +7,13 @@ require (
 	github.com/hpcloud/tail v1.0.0
 	github.com/kayrus/tuncfg v0.0.0-20210306071952-3921bb103b0a
 	github.com/manifoldco/promptui v0.8.0
-	github.com/miekg/dns v1.1.35
+	github.com/miekg/dns v1.1.40
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pion/dtls/v2 v2.0.8
 	github.com/vishvananda/netlink v1.1.0 // indirect
 	github.com/zaninime/go-hdlc v1.1.1
-	golang.org/x/net v0.0.0-20210224082022-3d97a244fca7
-	golang.org/x/sys v0.0.0-20210303074136-134d130e1a04
+	golang.org/x/net v0.0.0-20210226172049-e18ecbb05110
+	golang.org/x/sys v0.0.0-20210305034016-7844c3c200c3
 	golang.zx2c4.com/wireguard v0.0.0-20210225140808-70b7b7158fc9 // indirect
 	golang.zx2c4.com/wireguard/windows v0.3.8 // indirect
 	gopkg.in/fsnotify.v1 v1.4.7 // indirect
