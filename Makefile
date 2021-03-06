@@ -6,17 +6,21 @@ VERSION:=$(shell git describe --tags --always --dirty="-dev")
 GOOS:=$(shell go env GOOS)
 LDFLAGS:=-X main.Version=$(VERSION) -w -s
 GOOS:=$(strip $(shell go env GOOS))
-GOARCH:=$(strip $(shell go env GOARCH))
+GOARCHs:=$(strip $(shell go env GOARCH))
 
 ifeq "$(GOOS)" "windows"
 SUFFIX=.exe
+endif
+
+ifeq "$(GOOS)" "darwin"
+GOARCHs=amd64 arm64
 endif
 
 # CGO must be enabled
 export CGO_ENABLED:=1
 
 build: fmt vet
-	go build -mod=vendor -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME)_$(GOOS)_$(GOARCH)$(SUFFIX) ./cmd/gof5
+	$(foreach GOARCH,$(GOARCHs),$(shell GOARCH=$(GOARCH) go build -mod=vendor -ldflags="$(LDFLAGS)" -o bin/$(APP_NAME)_$(GOOS)_$(GOARCH)$(SUFFIX) ./cmd/gof5))
 
 docker:
 	docker run -ti --rm -e GOCACHE=/tmp -v $(PWD):/$(APP_NAME) -u $(UID):$(UID) --workdir /$(APP_NAME) golang:latest make
