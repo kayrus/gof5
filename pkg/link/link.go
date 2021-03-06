@@ -215,9 +215,7 @@ func (l *vpnLink) WaitAndConfig(cfg *config.Config) {
 		// create TUN
 		err = l.createTunDevice()
 		if err != nil {
-			log.Printf("WaitAndConfig error: %v", err)
 			l.ErrChan <- err
-			log.Printf("WaitAndConfig error sent")
 			return
 		}
 	}
