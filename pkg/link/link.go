@@ -218,6 +218,16 @@ func (l *vpnLink) WaitAndConfig(cfg *config.Config) {
 			l.ErrChan <- err
 			return
 		}
+		defer func() {
+			//
+			if err != nil && l.iface != nil {
+				// destroy interface on error
+				e := l.iface.Close()
+				if e != nil {
+					log.Printf("error closing interface: %v", e)
+				}
+			}
+		}()
 	}
 
 	if !cfg.DisableDNS {

@@ -19,7 +19,7 @@ github.com/hpcloud/tail/winfile
 # github.com/juju/ansiterm v0.0.0-20180109212912-720a0952cc2a
 github.com/juju/ansiterm
 github.com/juju/ansiterm/tabwriter
-# github.com/kayrus/tuncfg v0.0.0-20210306104745-bb43b5fccdd0
+# github.com/kayrus/tuncfg v0.0.0-20210306131627-3dc578c07387
 ## explicit
 github.com/kayrus/tuncfg/log
 github.com/kayrus/tuncfg/resolv

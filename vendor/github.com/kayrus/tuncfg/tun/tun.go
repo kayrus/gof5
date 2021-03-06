@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/kayrus/tuncfg/log"
 	"golang.zx2c4.com/wireguard/tun"
 )
 
@@ -18,9 +19,20 @@ func OpenTunDevice(local, gw *net.IPNet, name string, mtu int) (*tun.NativeTun, 
 		return nil, err
 	}
 
+	defer func() {
+		if err != nil {
+			// destroy interface on error
+			e := tunDev.Close()
+			if e != nil {
+				log.Errorf("error closing interface: %v", e)
+			}
+		}
+	}()
+
 	nativeTun, ok := tunDev.(*tun.NativeTun)
 	if !ok {
-		return nil, fmt.Errorf("failed to assert tun.NativeTun")
+		err = fmt.Errorf("failed to assert tun.NativeTun")
+		return nil, err
 	}
 
 	err = setInterface(nativeTun, local, gw)
