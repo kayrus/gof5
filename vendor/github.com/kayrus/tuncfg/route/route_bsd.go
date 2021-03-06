@@ -9,6 +9,7 @@ import (
 
 	"github.com/kayrus/tuncfg/log"
 	"golang.org/x/net/route"
+	"golang.org/x/sys/unix"
 )
 
 func (h *Handler) processRoute(socket int, dest *net.IPNet, action uint8) error {
@@ -52,34 +53,46 @@ func (h *Handler) processRoute(socket int, dest *net.IPNet, action uint8) error 
 		return err
 	}
 
-	_, err = syscall.Write(socket, bin[:])
+	_, err = unix.Write(socket, bin[:])
 	return err
 }
 
 func (h *Handler) Add() {
-	socket, err := syscall.Socket(syscall.AF_ROUTE, syscall.SOCK_RAW, syscall.AF_UNSPEC)
+	socket, err := unix.Socket(unix.AF_ROUTE, unix.SOCK_RAW, unix.AF_UNSPEC)
 	if err != nil {
-		log.Debugf("could not create route socket: %v", err)
+		log.Errorf("could not create route socket: %v", err)
 		return
 	}
 
 	for _, cidr := range h.routes {
 		if err := h.processRoute(socket, cidr, syscall.RTM_ADD); err != nil {
-			log.Debugf("failed to add route: %v", err)
+			log.Errorf("failed to add %s route: %v", cidr, err)
 		}
+	}
+
+	unix.Shutdown(socket, unix.SHUT_RDWR)
+	err = unix.Close(socket)
+	if err != nil {
+		log.Errorf("cannot close route socket: %v", err)
 	}
 }
 
 func (h *Handler) Del() {
-	socket, err := syscall.Socket(syscall.AF_ROUTE, syscall.SOCK_RAW, syscall.AF_UNSPEC)
+	socket, err := unix.Socket(unix.AF_ROUTE, unix.SOCK_RAW, unix.AF_UNSPEC)
 	if err != nil {
-		log.Debugf("could not create route socket: %v", err)
+		log.Errorf("could not create route socket: %v", err)
 		return
 	}
 
 	for _, cidr := range h.routes {
 		if err := h.processRoute(socket, cidr, syscall.RTM_DELETE); err != nil {
-			log.Debugf("failed to delete route: %v", err)
+			log.Errorf("failed to delete %s route: %v", cidr, err)
 		}
+	}
+
+	unix.Shutdown(socket, unix.SHUT_RDWR)
+	err = unix.Close(socket)
+	if err != nil {
+		log.Errorf("cannot close route socket: %v", err)
 	}
 }

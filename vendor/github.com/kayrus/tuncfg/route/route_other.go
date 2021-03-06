@@ -9,7 +9,7 @@ import (
 func (h *Handler) Add() {
 	for _, cidr := range h.routes {
 		if err := h.routeAdd(cidr); err != nil {
-			log.Debugf("failed to add %s route: %v", cidr, err)
+			log.Errorf("failed to add %s route: %v", cidr, err)
 		}
 	}
 }
@@ -17,7 +17,7 @@ func (h *Handler) Add() {
 func (h *Handler) Del() {
 	for _, cidr := range h.routes {
 		if err := h.routeDel(cidr); err != nil {
-			log.Debugf("failed to delete %s route: %v", cidr, err)
+			log.Errorf("failed to delete %s route: %v", cidr, err)
 		}
 	}
 }

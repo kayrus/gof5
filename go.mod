@@ -5,7 +5,7 @@ require (
 	github.com/fatih/color v1.10.0
 	github.com/howeyc/gopass v0.0.0-20190910152052-7cb4b85ec19c
 	github.com/hpcloud/tail v1.0.0
-	github.com/kayrus/tuncfg v0.0.0-20210306071952-3921bb103b0a
+	github.com/kayrus/tuncfg v0.0.0-20210306104745-bb43b5fccdd0
 	github.com/manifoldco/promptui v0.8.0
 	github.com/miekg/dns v1.1.40
 	github.com/mitchellh/go-homedir v1.1.0
