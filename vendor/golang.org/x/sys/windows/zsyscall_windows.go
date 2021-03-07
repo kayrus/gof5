@@ -364,6 +364,7 @@ var (
 	procRtlGetCurrentPeb                                     = modntdll.NewProc("RtlGetCurrentPeb")
 	procRtlGetNtVersionNumbers                               = modntdll.NewProc("RtlGetNtVersionNumbers")
 	procRtlGetVersion                                        = modntdll.NewProc("RtlGetVersion")
+	procRtlInitString                                        = modntdll.NewProc("RtlInitString")
 	procRtlInitUnicodeString                                 = modntdll.NewProc("RtlInitUnicodeString")
 	procRtlNtStatusToDosErrorNoTeb                           = modntdll.NewProc("RtlNtStatusToDosErrorNoTeb")
 	procCLSIDFromString                                      = modole32.NewProc("CLSIDFromString")
@@ -1477,7 +1478,7 @@ func CreateDirectory(path *uint16, sa *SecurityAttributes) (err error) {
 func CreateEventEx(eventAttrs *SecurityAttributes, name *uint16, flags uint32, desiredAccess uint32) (handle Handle, err error) {
 	r0, _, e1 := syscall.Syscall6(procCreateEventExW.Addr(), 4, uintptr(unsafe.Pointer(eventAttrs)), uintptr(unsafe.Pointer(name)), uintptr(flags), uintptr(desiredAccess), 0, 0)
 	handle = Handle(r0)
-	if handle == 0 {
+	if handle == 0 || e1 == ERROR_ALREADY_EXISTS {
 		err = errnoErr(e1)
 	}
 	return
@@ -1486,7 +1487,7 @@ func CreateEventEx(eventAttrs *SecurityAttributes, name *uint16, flags uint32, d
 func CreateEvent(eventAttrs *SecurityAttributes, manualReset uint32, initialState uint32, name *uint16) (handle Handle, err error) {
 	r0, _, e1 := syscall.Syscall6(procCreateEventW.Addr(), 4, uintptr(unsafe.Pointer(eventAttrs)), uintptr(manualReset), uintptr(initialState), uintptr(unsafe.Pointer(name)), 0, 0)
 	handle = Handle(r0)
-	if handle == 0 {
+	if handle == 0 || e1 == ERROR_ALREADY_EXISTS {
 		err = errnoErr(e1)
 	}
 	return
@@ -1495,7 +1496,7 @@ func CreateEvent(eventAttrs *SecurityAttributes, manualReset uint32, initialStat
 func CreateFileMapping(fhandle Handle, sa *SecurityAttributes, prot uint32, maxSizeHigh uint32, maxSizeLow uint32, name *uint16) (handle Handle, err error) {
 	r0, _, e1 := syscall.Syscall6(procCreateFileMappingW.Addr(), 6, uintptr(fhandle), uintptr(unsafe.Pointer(sa)), uintptr(prot), uintptr(maxSizeHigh), uintptr(maxSizeLow), uintptr(unsafe.Pointer(name)))
 	handle = Handle(r0)
-	if handle == 0 {
+	if handle == 0 || e1 == ERROR_ALREADY_EXISTS {
 		err = errnoErr(e1)
 	}
 	return
@@ -1539,7 +1540,7 @@ func CreateJobObject(jobAttr *SecurityAttributes, name *uint16) (handle Handle, 
 func CreateMutexEx(mutexAttrs *SecurityAttributes, name *uint16, flags uint32, desiredAccess uint32) (handle Handle, err error) {
 	r0, _, e1 := syscall.Syscall6(procCreateMutexExW.Addr(), 4, uintptr(unsafe.Pointer(mutexAttrs)), uintptr(unsafe.Pointer(name)), uintptr(flags), uintptr(desiredAccess), 0, 0)
 	handle = Handle(r0)
-	if handle == 0 {
+	if handle == 0 || e1 == ERROR_ALREADY_EXISTS {
 		err = errnoErr(e1)
 	}
 	return
@@ -1552,7 +1553,7 @@ func CreateMutex(mutexAttrs *SecurityAttributes, initialOwner bool, name *uint16
 	}
 	r0, _, e1 := syscall.Syscall(procCreateMutexW.Addr(), 3, uintptr(unsafe.Pointer(mutexAttrs)), uintptr(_p0), uintptr(unsafe.Pointer(name)))
 	handle = Handle(r0)
-	if handle == 0 {
+	if handle == 0 || e1 == ERROR_ALREADY_EXISTS {
 		err = errnoErr(e1)
 	}
 	return
@@ -3096,7 +3097,7 @@ func RtlDefaultNpAcl(acl **ACL) (ntstatus error) {
 	return
 }
 
-func RtlDosPathNameToNtPathName(dosName *uint16, ntName *UNICODE_STRING, ntFileNamePart *uint16, relativeName *RTL_RELATIVE_NAME) (ntstatus error) {
+func RtlDosPathNameToNtPathName(dosName *uint16, ntName *NTUnicodeString, ntFileNamePart *uint16, relativeName *RTL_RELATIVE_NAME) (ntstatus error) {
 	r0, _, _ := syscall.Syscall6(procRtlDosPathNameToNtPathName_U_WithStatus.Addr(), 4, uintptr(unsafe.Pointer(dosName)), uintptr(unsafe.Pointer(ntName)), uintptr(unsafe.Pointer(ntFileNamePart)), uintptr(unsafe.Pointer(relativeName)), 0, 0)
 	if r0 != 0 {
 		ntstatus = NTStatus(r0)
@@ -3104,7 +3105,7 @@ func RtlDosPathNameToNtPathName(dosName *uint16, ntName *UNICODE_STRING, ntFileN
 	return
 }
 
-func RtlDosPathNameToRelativeNtPathName(dosName *uint16, ntName *UNICODE_STRING, ntFileNamePart *uint16, relativeName *RTL_RELATIVE_NAME) (ntstatus error) {
+func RtlDosPathNameToRelativeNtPathName(dosName *uint16, ntName *NTUnicodeString, ntFileNamePart *uint16, relativeName *RTL_RELATIVE_NAME) (ntstatus error) {
 	r0, _, _ := syscall.Syscall6(procRtlDosPathNameToRelativeNtPathName_U_WithStatus.Addr(), 4, uintptr(unsafe.Pointer(dosName)), uintptr(unsafe.Pointer(ntName)), uintptr(unsafe.Pointer(ntFileNamePart)), uintptr(unsafe.Pointer(relativeName)), 0, 0)
 	if r0 != 0 {
 		ntstatus = NTStatus(r0)
@@ -3131,7 +3132,12 @@ func rtlGetVersion(info *OsVersionInfoEx) (ntstatus error) {
 	return
 }
 
-func RtlInitUnicodeString(destinationString *UNICODE_STRING, sourceString *uint16) {
+func RtlInitString(destinationString *NTString, sourceString *byte) {
+	syscall.Syscall(procRtlInitString.Addr(), 2, uintptr(unsafe.Pointer(destinationString)), uintptr(unsafe.Pointer(sourceString)), 0)
+	return
+}
+
+func RtlInitUnicodeString(destinationString *NTUnicodeString, sourceString *uint16) {
 	syscall.Syscall(procRtlInitUnicodeString.Addr(), 2, uintptr(unsafe.Pointer(destinationString)), uintptr(unsafe.Pointer(sourceString)), 0)
 	return
 }

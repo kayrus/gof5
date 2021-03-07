@@ -19,7 +19,7 @@ github.com/hpcloud/tail/winfile
 # github.com/juju/ansiterm v0.0.0-20180109212912-720a0952cc2a
 github.com/juju/ansiterm
 github.com/juju/ansiterm/tabwriter
-# github.com/kayrus/tuncfg v0.0.0-20210307091432-61cf28f0680b
+# github.com/kayrus/tuncfg v0.0.0-20210307172901-e3d7bd040320
 ## explicit
 github.com/kayrus/tuncfg/log
 github.com/kayrus/tuncfg/resolv
@@ -98,7 +98,7 @@ golang.org/x/net/internal/socket
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
 golang.org/x/net/route
-# golang.org/x/sys v0.0.0-20210305034016-7844c3c200c3
+# golang.org/x/sys v0.0.0-20210305230114-8fe3ee5dd75b
 ## explicit
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/plan9
@@ -110,15 +110,12 @@ golang.org/x/term
 # golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
-# golang.zx2c4.com/wireguard v0.0.0-20210225140808-70b7b7158fc9 => github.com/kayrus/wireguard v0.0.0-20210228102730-04afc3c4c795
-## explicit
+# golang.zx2c4.com/wireguard v0.0.0-20210307162820-f4695db51c39
 golang.zx2c4.com/wireguard/rwcancel
 golang.zx2c4.com/wireguard/tun
 golang.zx2c4.com/wireguard/tun/wintun
 golang.zx2c4.com/wireguard/tun/wintun/memmod
-golang.zx2c4.com/wireguard/tun/wintun/resource
-# golang.zx2c4.com/wireguard/windows v0.3.8 => github.com/kayrus/wireguard-windows v0.0.0-20210303100507-540e87897140
-## explicit
+# golang.zx2c4.com/wireguard/windows v0.3.9-0.20210307162607-39f3c66fde96
 golang.zx2c4.com/wireguard/windows/tunnel/winipcfg
 # gopkg.in/fsnotify.v1 v1.4.7
 ## explicit

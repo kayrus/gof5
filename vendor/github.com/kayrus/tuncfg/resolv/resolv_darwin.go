@@ -13,7 +13,13 @@ import (
 
 var re = regexp.MustCompile(`(?m)^\(\d+\)\s+(.*)$`)
 
-// TODO: use https://developer.apple.com/documentation/systemconfiguration/1517090-scnetworkinterfacecopyall
+// TODO: use https://opensource.apple.com/source/configd/configd-293.5/SystemConfiguration.fproj/SCNetworkService.c.auto.html
+// /System/Volumes/Data/System/Library/Frameworks/Python.framework/Versions/2.7/Extras/lib/python/PyObjC/SystemConfiguration
+// https://gist.github.com/nigelkersten/633191
+// https://gist.github.com/LiamHaworth/d50ce9167fe0377cd20d6585d77a70b4
+// https://github.com/LiamHaworth/macos-golang
+// https://github.com/mullvad/system-configuration-rs
+// https://github.com/keybase/go-vendor-test/blob/master/github.com/keybase/go-kext/corefoundation.go
 func resolveNetworkService() ([]string, error) {
 	args := []string{
 		"-listnetworkserviceorder",
