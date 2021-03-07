@@ -71,7 +71,6 @@ func randomHostname(n int) []byte {
 
 // init a TLS connection
 func InitConnection(server string, cfg *config.Config, tlsConfig *tls.Config) (*vpnLink, error) {
-	// TLS
 	getURL := fmt.Sprintf("https://%s/myvpn?sess=%s&hostname=%s&hdlc_framing=%s&ipv4=%s&ipv6=%s&Z=%s",
 		server,
 		cfg.F5Config.Object.SessionID,
@@ -189,6 +188,9 @@ func (l *vpnLink) createTunDevice() error {
 	}
 	l.name, err = tunDev.Name()
 	if err != nil {
+		if e := tunDev.Close(); e != nil {
+			log.Printf("error closing interface: %v", e)
+		}
 		return fmt.Errorf("failed to get an interface name: %s", err)
 	}
 
@@ -219,11 +221,9 @@ func (l *vpnLink) WaitAndConfig(cfg *config.Config) {
 			return
 		}
 		defer func() {
-			//
 			if err != nil && l.iface != nil {
 				// destroy interface on error
-				e := l.iface.Close()
-				if e != nil {
+				if e := l.iface.Close(); e != nil {
 					log.Printf("error closing interface: %v", e)
 				}
 			}

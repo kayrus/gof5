@@ -130,11 +130,8 @@ func (l *vpnLink) PppdLogParser(stderr io.Reader) {
 	scanner := bufio.NewScanner(stderr)
 	for scanner.Scan() {
 		str := scanner.Text()
-		if v := strings.SplitN(str, ": ", 2); len(v) == 2 {
-			str = v[1]
-		}
 		if strings.Contains(str, "Using interface") {
-			if v := strings.FieldsFunc(strings.TrimSpace(str), util.SplitFunc); len(v) > 0 {
+			if v := strings.FieldsFunc(str, util.SplitFunc); len(v) > 0 {
 				l.name = v[len(v)-1]
 			}
 		}
@@ -147,6 +144,7 @@ func (l *vpnLink) PppdLogParser(stderr io.Reader) {
 
 // freebsd ppp log parser
 // TODO: talk directly via pppctl
+// /etc/ppp/ppp.conf should have `set server /var/run/ppp "" 0177`
 func (l *vpnLink) PppLogParser() {
 	t, err := tail.TailFile("/var/log/ppp.log", tail.Config{
 		Location: &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd},
@@ -159,11 +157,12 @@ func (l *vpnLink) PppLogParser() {
 	}
 	for line := range t.Lines {
 		str := line.Text
+		// strip syslog prefix
 		if v := strings.SplitN(str, ": ", 2); len(v) == 2 {
 			str = v[1]
 		}
 		if strings.Contains(str, "Using interface") {
-			if v := strings.FieldsFunc(strings.TrimSpace(str), util.SplitFunc); len(v) > 0 {
+			if v := strings.FieldsFunc(str, util.SplitFunc); len(v) > 0 {
 				l.name = v[len(v)-1]
 			}
 		}

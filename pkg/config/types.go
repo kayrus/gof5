@@ -40,8 +40,6 @@ type Config struct {
 	Gid int `yaml:"-"`
 	// Config, returned by F5
 	F5Config *Favorite `yaml:"-"`
-	// save /etc/resolv.conf
-	ResolvConf []byte `yaml:"-"`
 }
 
 func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {

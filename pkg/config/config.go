@@ -77,6 +77,8 @@ func ReadConfig(debug bool) (*Config, error) {
 				return nil, fmt.Errorf("failed to set an owner for the %q config directory: %s", configPath, err)
 			}
 		}
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to get %q directory stat: %s", configPath, err)
 	}
 
 	cfg := &Config{}
