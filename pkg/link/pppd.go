@@ -51,7 +51,7 @@ func (l *vpnLink) PppdHTTPToTun(pppd io.WriteCloser) {
 	buf := make([]byte, bufferSize)
 	for {
 		select {
-		case <-l.TermChan:
+		case <-l.TunDown:
 			return
 		default:
 			rn, err := l.HTTPConn.Read(buf)
@@ -82,7 +82,7 @@ func (l *vpnLink) PppdTunToHTTP(pppd io.ReadCloser) {
 	buf := make([]byte, bufferSize)
 	for {
 		select {
-		case <-l.TermChan:
+		case <-l.TunDown:
 			return
 		default:
 			rn, err := pppd.Read(buf)

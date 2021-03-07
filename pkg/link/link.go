@@ -10,7 +10,6 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
-	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -36,8 +35,8 @@ var colorlog = log.New(color.Error, "", log.LstdFlags)
 type vpnLink struct {
 	sync.Mutex
 	HTTPConn    io.ReadWriteCloser
-	TermChan    chan os.Signal
 	ErrChan     chan error
+	TunDown     chan struct{}
 	PppdErrChan chan error
 	iface       io.ReadWriteCloser
 	name        string
@@ -88,8 +87,8 @@ func InitConnection(server string, cfg *config.Config, tlsConfig *tls.Config) (*
 
 	// define link channels
 	l := &vpnLink{
-		TermChan:    make(chan os.Signal, 1),
 		ErrChan:     make(chan error, 1),
+		TunDown:     make(chan struct{}, 1),
 		PppdErrChan: make(chan error, 1),
 		serverIPs:   serverIPs,
 		pppUp:       make(chan struct{}, 1),

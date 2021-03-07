@@ -466,7 +466,7 @@ func (l *vpnLink) HttpToTun() {
 	dstBuf := &bytes.Buffer{}
 	for {
 		select {
-		case <-l.TermChan:
+		case <-l.TunDown:
 			return
 		default:
 			err := fromF5(l, dstBuf)
@@ -541,7 +541,7 @@ func (l *vpnLink) TunToHTTP() {
 	dstBuf := &bytes.Buffer{}
 	for {
 		select {
-		case <-l.TermChan:
+		case <-l.TunDown:
 			return
 		case <-l.tunUp:
 			rn, err := l.iface.Read(buf)

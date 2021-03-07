@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"os"
 	"os/signal"
 	"runtime"
 	"syscall"
@@ -169,7 +170,8 @@ func Connect(opts *Options) error {
 
 	cmd := link.Cmd(cfg)
 
-	signal.Notify(l.TermChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGPIPE, syscall.SIGHUP)
+	termChan := make(chan os.Signal, 1)
+	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGPIPE, syscall.SIGHUP)
 
 	// set routes and DNS after the PPP/TUN is up
 	go l.WaitAndConfig(cfg)
@@ -228,13 +230,16 @@ func Connect(opts *Options) error {
 	}
 
 	select {
-	case sig := <-l.TermChan:
+	case sig := <-termChan:
 		log.Printf("received %s signal, exiting", sig)
 	case err = <-l.ErrChan:
 		// error received
 	case err = <-l.PppdErrChan:
 		// ppp/pppd child error received
 	}
+
+	// notify tun readers and writes to stop
+	close(l.TunDown)
 
 	return err
 }
