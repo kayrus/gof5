@@ -248,7 +248,7 @@ func login(c *http.Client, server string, username, password *string) error {
 	}
 	if *password == "" {
 		fmt.Print("Enter VPN password: ")
-		v, err := gopass.GetPasswd()
+		v, err := gopass.GetPasswdMasked()
 		if err != nil {
 			return fmt.Errorf("failed to read password: %s", err)
 		}
