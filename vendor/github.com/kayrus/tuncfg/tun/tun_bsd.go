@@ -25,7 +25,7 @@ type ifFlagsReq struct {
 	Flags uint16
 }
 
-func setInterface(tun *tun.NativeTun, local, gw *net.IPNet) error {
+func setInterface(tun *tun.NativeTun, local, gw *net.IPNet, _ int) error {
 	name, err := tun.Name()
 	if err != nil {
 		return err

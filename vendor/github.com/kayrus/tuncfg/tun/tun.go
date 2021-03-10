@@ -35,7 +35,7 @@ func OpenTunDevice(local, gw *net.IPNet, name string, mtu int) (*tun.NativeTun, 
 		return nil, err
 	}
 
-	err = setInterface(nativeTun, local, gw)
+	err = setInterface(nativeTun, local, gw, mtu)
 	if err != nil {
 		return nil, fmt.Errorf("failed to configure interface: %v", err)
 	}

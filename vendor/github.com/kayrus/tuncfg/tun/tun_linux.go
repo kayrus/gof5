@@ -8,7 +8,7 @@ import (
 	"golang.zx2c4.com/wireguard/tun"
 )
 
-func setInterface(tun *tun.NativeTun, local, gw *net.IPNet) error {
+func setInterface(tun *tun.NativeTun, local, gw *net.IPNet, _ int) error {
 	name, err := tun.Name()
 	if err != nil {
 		return err
