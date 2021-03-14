@@ -202,6 +202,69 @@ func (l *vpnLink) createTunDevice() error {
 	return nil
 }
 
+func (l *vpnLink) configureDNS(cfg *config.Config) error {
+	var err error
+	// this is used only in linux/freebsd to store /etc/resolv.conf backup
+	resolv.AppName = "gof5"
+
+	dnsSuffixes := cfg.F5Config.Object.DNSSuffix
+	var dnsServers []net.IP
+	if len(cfg.DNS) == 0 {
+		// route everything through VPN gatewy
+		dnsServers = cfg.F5Config.Object.DNS
+	} else {
+		// route only configured suffixes via local DNS proxy
+		dnsServers = []net.IP{cfg.ListenDNS}
+	}
+
+	// define DNS servers, provided by F5
+	l.resolvHandler, err = resolv.New(l.name, dnsServers, dnsSuffixes, cfg.RewriteResolv)
+	if err != nil {
+		return err
+	}
+
+	if len(cfg.DNS) > 0 && !l.resolvHandler.IsResolve() {
+		// combine local network search with VPN gateway search
+		dnsSuffixes = append(l.resolvHandler.GetOriginalSuffixes(), cfg.F5Config.Object.DNSSuffix...)
+		l.resolvHandler.SetSuffixes(dnsSuffixes)
+	}
+
+	if l.resolvHandler.IsResolve() {
+		// resolve daemon will route necessary domains through VPN gatewy
+		log.Printf("Detected systemd-resolved")
+		l.resolvHandler.SetDNSServers(cfg.F5Config.Object.DNS)
+		if len(cfg.DNS) > 0 {
+			log.Printf("Forwarding %q DNS requests to %q", cfg.DNS, cfg.F5Config.Object.DNS)
+			l.resolvHandler.SetDNSDomains(cfg.DNS)
+			log.Printf("Default DNS servers: %q", l.resolvHandler.GetOriginalDNS())
+		} else {
+			// route all DNS queries via VPN
+			log.Printf("Forwarding all DNS requests to %q", cfg.F5Config.Object.DNS)
+			l.resolvHandler.SetDNSDomains([]string{"."})
+		}
+	}
+
+	// set DNS and additionally detect original DNS servers, e.g. when NetworkManager is used
+	err = l.resolvHandler.Set()
+	if err != nil {
+		return err
+	}
+
+	if !l.resolvHandler.IsResolve() {
+		if len(cfg.DNS) == 0 {
+			log.Printf("Forwarding all DNS requests to %q", cfg.F5Config.Object.DNS)
+			return nil
+		}
+		cfg.DNSServers = l.resolvHandler.GetOriginalDNS()
+		log.Printf("Serving DNS proxy on %s:53", cfg.ListenDNS)
+		log.Printf("Forwarding %q DNS requests to %q", cfg.DNS, cfg.F5Config.Object.DNS)
+		log.Printf("Default DNS servers: %q", cfg.DNSServers)
+		dns.Start(cfg, l.ErrChan, l.TunDown)
+	}
+
+	return nil
+}
+
 // wait for pppd and config DNS and routes
 func (l *vpnLink) WaitAndConfig(cfg *config.Config) {
 	// wait for ppp handshake completed
@@ -230,46 +293,10 @@ func (l *vpnLink) WaitAndConfig(cfg *config.Config) {
 	}
 
 	if !cfg.DisableDNS {
-		// this is used only in linux/freebsd to store /etc/resolv.conf backup
-		resolv.AppName = "gof5"
-
-		var dnsServers []net.IP
-		dnsSuffixes := cfg.F5Config.Object.DNSSuffix
-		if len(cfg.DNS) == 0 {
-			// route everything through VPN gatewy
-			dnsServers = cfg.F5Config.Object.DNS
-		} else {
-			// route only configured suffixes via local DNS proxy
-			dnsServers = []net.IP{cfg.ListenDNS}
-		}
-		// define DNS servers, provided by F5
-		l.resolvHandler, err = resolv.New(l.name, dnsServers, dnsSuffixes, cfg.RewriteResolv)
+		err = l.configureDNS(cfg)
 		if err != nil {
 			l.ErrChan <- err
 			return
-		}
-
-		if len(cfg.DNS) > 0 {
-			// combine local network search with VPN gateway search
-			dnsSuffixes = append(l.resolvHandler.GetOriginalSuffixes(), cfg.F5Config.Object.DNSSuffix...)
-			log.Printf("Setting %q suffixes", dnsSuffixes)
-			l.resolvHandler.SetSuffixes(dnsSuffixes)
-		}
-
-		err = l.resolvHandler.Set()
-		if err != nil {
-			l.ErrChan <- err
-			return
-		}
-
-		// get default DNS servers, when config has empty list
-		if len(cfg.DNSServers) == 0 {
-			cfg.DNSServers = l.resolvHandler.GetOriginalDNS()
-		}
-
-		// TODO: check empty cfg.DNSServers
-		if len(cfg.DNS) > 0 {
-			dns.Start(cfg, l.ErrChan)
 		}
 	}
 

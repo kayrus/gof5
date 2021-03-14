@@ -11,11 +11,7 @@ import (
 	"github.com/miekg/dns"
 )
 
-func Start(cfg *config.Config, errChan chan error) {
-	log.Printf("Serving DNS proxy on %s:53", cfg.ListenDNS)
-	log.Printf("Forwarding %q DNS requests to %q", cfg.DNS, cfg.F5Config.Object.DNS)
-	log.Printf("Default DNS servers: %q", cfg.DNSServers)
-
+func Start(cfg *config.Config, errChan chan error, tunDown chan struct{}) {
 	dnsUDPHandler := func(w dns.ResponseWriter, m *dns.Msg) {
 		dnsHandler(w, m, cfg, "udp")
 	}
@@ -24,19 +20,35 @@ func Start(cfg *config.Config, errChan chan error) {
 		dnsHandler(w, m, cfg, "tcp")
 	}
 
+	srvUDP := &dns.Server{
+		Addr:    cfg.ListenDNS.String() + ":53",
+		Net:     "udp",
+		Handler: dns.HandlerFunc(dnsUDPHandler),
+	}
+	srvTCP := &dns.Server{
+		Addr:    cfg.ListenDNS.String() + ":53",
+		Net:     "tcp",
+		Handler: dns.HandlerFunc(dnsTCPHandler),
+	}
+
 	go func() {
-		srv := &dns.Server{Addr: cfg.ListenDNS.String() + ":53", Net: "udp", Handler: dns.HandlerFunc(dnsUDPHandler)}
-		if err := srv.ListenAndServe(); err != nil {
-			errChan <- fmt.Errorf("failed to set udp listener %s", err)
+		if err := srvUDP.ListenAndServe(); err != nil {
+			errChan <- fmt.Errorf("failed to set udp listener: %v", err)
 			return
 		}
 	}()
 	go func() {
-		srv := &dns.Server{Addr: cfg.ListenDNS.String() + ":53", Net: "tcp", Handler: dns.HandlerFunc(dnsTCPHandler)}
-		if err := srv.ListenAndServe(); err != nil {
-			errChan <- fmt.Errorf("failed to set tcp listener %s", err)
+		if err := srvTCP.ListenAndServe(); err != nil {
+			errChan <- fmt.Errorf("failed to set tcp listener: %v", err)
 			return
 		}
+	}()
+
+	go func() {
+		<-tunDown
+		log.Printf("Shutting down DNS proxy")
+		srvUDP.Shutdown()
+		srvTCP.Shutdown()
 	}()
 }
 

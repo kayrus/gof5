@@ -20,8 +20,15 @@ var (
 
 type Handler struct {
 	name        string
+	iface       *net.Interface
 	dnsServers  []net.IP
 	dnsSuffixes []string
+
+	// only with linux dbus based managers
+	dbusShillServicePath string
+	dbusNmConnectionPath string
+	// only with systemd-resolved
+	dnsDomains []string
 
 	// parsed /etc/resolv.conf
 	origDnsServers  []net.IP
@@ -48,7 +55,15 @@ type Handler struct {
 }
 
 func New(name string, dnsServers []net.IP, dnsSuffixes []string, rewrite bool) (*Handler, error) {
-	return newHandler(name, dnsServers, dnsSuffixes, rewrite)
+	h, err := newHandler(name, dnsServers, dnsSuffixes, rewrite)
+	if err != nil {
+		return nil, err
+	}
+	h.iface, err = net.InterfaceByName(name)
+	if err != nil {
+		return nil, err
+	}
+	return h, nil
 }
 
 func splitFunc(c rune) bool {
@@ -121,6 +136,32 @@ func (h *Handler) parseResolvConf() error {
 	return nil
 }
 
+func (h *Handler) IsNetworkManager() bool {
+	if v, ok := interface{}(h).(interface{ isNetworkManager() bool }); ok {
+		return v.isNetworkManager()
+	}
+	return false
+}
+
+func (h *Handler) IsResolve() bool {
+	// NetworkManager may work on top of systemd-resolved
+	if h.IsNetworkManager() {
+		return false
+	}
+
+	if v, ok := interface{}(h).(interface{ isResolve() bool }); ok {
+		return v.isResolve()
+	}
+	return false
+}
+
+func (h *Handler) IsShill() bool {
+	if v, ok := interface{}(h).(interface{ isShill() bool }); ok {
+		return v.isShill()
+	}
+	return false
+}
+
 func (h *Handler) GetOriginalDNS() []net.IP {
 	return h.origDnsServers
 }
@@ -143,4 +184,12 @@ func (h *Handler) SetSuffixes(dnsSuffixes []string) {
 
 func (h *Handler) SetOptions(dnsOptions []string) {
 	h.dnsOptions = dnsOptions
+}
+
+func (h *Handler) GetDNSDomains() []string {
+	return h.dnsDomains
+}
+
+func (h *Handler) SetDNSDomains(dnsDomains []string) {
+	h.dnsDomains = dnsDomains
 }

@@ -1,5 +1,4 @@
-// +build !darwin
-// +build !windows
+// +build !darwin,!windows
 
 package resolv
 
@@ -51,6 +50,25 @@ func (h *Handler) Set() error {
 		return nil
 	}
 
+	// NetworkManager has a higher priority
+	if h.IsNetworkManager() {
+		if v, ok := interface{}(h).(interface{ setNetworkManager() error }); ok {
+			return v.setNetworkManager()
+		}
+	}
+
+	if h.IsResolve() {
+		if v, ok := interface{}(h).(interface{ setResolve() error }); ok {
+			return v.setResolve()
+		}
+	}
+
+	if h.IsShill() {
+		if v, ok := interface{}(h).(interface{ setShill() error }); ok {
+			return v.setShill()
+		}
+	}
+
 	log.Debugf("Setting %s", ResolvPath)
 
 	resolvConfHeader := fmt.Sprintf(header, AppName, os.Getpid())
@@ -93,6 +111,28 @@ func (h *Handler) Restore() {
 	if len(h.dnsServers) == 0 && len(h.dnsSuffixes) == 0 {
 		// nothing to do
 		return
+	}
+
+	// NetworkManager has a higher priority
+	if h.IsNetworkManager() {
+		if v, ok := interface{}(h).(interface{ restoreNetworkManager() }); ok {
+			v.restoreNetworkManager()
+			return
+		}
+	}
+
+	if h.IsResolve() {
+		if v, ok := interface{}(h).(interface{ restoreResolve() }); ok {
+			v.restoreResolve()
+			return
+		}
+	}
+
+	if h.IsShill() {
+		if v, ok := interface{}(h).(interface{ restoreShill() }); ok {
+			v.restoreShill()
+			return
+		}
 	}
 
 	if h.backup == nil {

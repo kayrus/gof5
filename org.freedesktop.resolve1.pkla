@@ -1,0 +1,6 @@
+[Adding or changing system-wide resolved]
+Identity=unix-group:netdev;unix-group:sudo
+Action=org.freedesktop.resolve1.*
+ResultAny=no
+ResultInactive=no
+ResultActive=yes

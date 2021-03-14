@@ -71,8 +71,7 @@ Windows version doesn't support `pppd` driver.
 ## ChromeOS
 
 Developer mode should be enabled, since gof5 requires root privileges.
-The binary should be placed inside the `/usr/share/oem` directory. Home directory in ChromeOS doesn't allow to have executables.
-`rewriteResolv: true` and `driver: pppd` config options should be set.
+The binary should be placed inside the `/usr/share/oem` directory. Home directory in ChromeOS doesn't allow to have executables. `driver: pppd` config options should be set.
 
 ## HOWTO
 
@@ -118,7 +117,7 @@ You can define an extra `~/.gof5/config.yaml` file with contents:
 # In BSD defaults to 127.0.0.1
 # listenDNS: 127.0.0.1
 # rewrite /etc/resolv.conf instead of renaming
-# Linux only, required in ChromeOS, where /etc/resolv.conf cannot be renamed
+# Linux only, required in cases when /etc/resolv.conf cannot be renamed
 rewriteResolv: false
 # experimental DTLSv1.2 support
 # F5 BIG-IP server should have enabled DTLSv1.2 support

@@ -12,10 +12,6 @@ ifeq "$(GOOS)" "windows"
 SUFFIX=.exe
 endif
 
-ifeq "$(GOOS)" "darwin"
-GOARCHs=amd64 arm64
-endif
-
 # CGO must be enabled
 export CGO_ENABLED:=1
 

@@ -71,12 +71,7 @@ func (h *Handler) Set() error {
 		return nil
 	}
 
-	ifc, err := net.InterfaceByName(h.name)
-	if err != nil {
-		return err
-	}
-
-	luid, err := winipcfg.LUIDFromIndex(uint32(ifc.Index))
+	luid, err := winipcfg.LUIDFromIndex(uint32(h.iface.Index))
 	if err != nil {
 		return err
 	}
