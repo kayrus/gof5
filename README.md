@@ -4,6 +4,54 @@
 
 * an application must be executed under a privileged user
 
+## Linux
+
+If your Linux distribution uses [systemd-resolved](https://www.freedesktop.org/software/systemd/man/systemd-resolved.service.html) or [NetworkManager](https://wiki.gnome.org/Projects/NetworkManager) you can run gof5 without sudo privileges.
+You need to adjust the binary capabilities:
+
+```sh
+$ sudo setcap cap_net_admin,cap_net_bind_service+ep /path/to/binary/gof5
+```
+
+For systemd-resolved you need to adjust PolicyKit Local Authority config, e.g. in Ubuntu:
+
+```sh
+$ cd gof5 # changedir to gof5 github repo
+$ sudo cp org.freedesktop.resolve1.pkla /var/lib/polkit-1/localauthority/50-local.d/org.freedesktop.resolve1.pkla
+$ sudo systemctl restart polkit.service
+```
+
+### Per user capabilities
+
+If you want to have more granular restrictions to run gof5, you can allow only particular users to run it.
+
+First of all add an entry before the `none  *` in a `/etc/security/capability.conf` file:
+
+```
+cap_net_admin,cap_net_bind_service %username%
+```
+
+where a `%username%` is a name of the user, which should get inherited `CAP_NET_ADMIN` and `CAP_NET_BIND_SERVICE` capabilities.
+
+Adjust the binary flags to have inherited capabilities only:
+
+```
+$ sudo setcap cap_net_admin,cap_net_bind_service+i /path/to/binary/gof5
+```
+
+Check user's capabilities:
+
+```
+$ sudo -u %username% capsh --print | awk '/Current/{print $NF}'
+cap_net_bind_service,cap_net_admin+i
+```
+
+gof5 should be executed using sudo even if you already logged in as this user:
+
+```
+$ sudo -u %username% /path/to/binary/gof5
+```
+
 ## MacOS
 
 On MacOS run the command below to avoid a `cannot be opened because the developer cannot be verified` warning:

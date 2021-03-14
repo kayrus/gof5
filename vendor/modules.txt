@@ -126,3 +126,8 @@ gopkg.in/tomb.v1
 # gopkg.in/yaml.v2 v2.4.0
 ## explicit
 gopkg.in/yaml.v2
+# kernel.org/pub/linux/libs/security/libcap/cap v1.2.48
+## explicit
+kernel.org/pub/linux/libs/security/libcap/cap
+# kernel.org/pub/linux/libs/security/libcap/psx v1.2.48
+kernel.org/pub/linux/libs/security/libcap/psx
