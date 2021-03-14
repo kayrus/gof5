@@ -96,11 +96,6 @@ dns:
 - .corp.
 # for reverse DNS lookup
 - .in-addr.arpa.
-# a list of primary DNS servers
-# Primary DNS servers. When empty, system DNS servers will be used
-dnsServers:
-- 8.8.8.8
-- 8.8.4.4
 # A list of subnets to be routed via VPN
 # When not set, the routes pushed from F5 will be used
 # Use "routes: []", if you don't want gof5 to manage routes at all

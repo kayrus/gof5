@@ -29,8 +29,7 @@ type Config struct {
 	// rewrite /etc/resolv.conf instead of renaming
 	// required in ChromeOS, where /etc/resolv.conf cannot be renamed
 	RewriteResolv bool `yaml:"rewriteResolv"`
-	// list of DNS local servers
-	// when list is empty, parsed from /etc/resolv.conf
+	// list of detected local DNS servers
 	DNSServers []net.IP `yaml:"-"`
 	// config path
 	Path string `yaml:"-"`
@@ -46,10 +45,9 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type tmp Config
 	var s struct {
 		tmp
-		ListenDNS  *string  `yaml:"listenDNS"`
-		Routes     []string `yaml:"routes"`
-		DNSServers []string `yaml:"dnsServers"`
-		PPPdArgs   []string `yaml:"pppdArgs"`
+		ListenDNS *string  `yaml:"listenDNS"`
+		Routes    []string `yaml:"routes"`
+		PPPdArgs  []string `yaml:"pppdArgs"`
 	}
 
 	if err := unmarshal(&s.tmp); err != nil {
@@ -98,11 +96,6 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if len(s.PPPdArgs) > 0 {
 		// extra pppd args
 		r.PPPdArgs = append(r.PPPdArgs, s.PPPdArgs...)
-	}
-
-	r.DNSServers = make([]net.IP, len(s.DNSServers))
-	for i, v := range s.DNSServers {
-		r.DNSServers[i] = net.ParseIP(v)
 	}
 
 	return nil
