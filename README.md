@@ -71,7 +71,9 @@ Windows version doesn't support `pppd` driver.
 ## ChromeOS
 
 Developer mode should be enabled, since gof5 requires root privileges.
-The binary should be placed inside the `/usr/share/oem` directory. Home directory in ChromeOS doesn't allow to have executables. `driver: pppd` config options should be set.
+The binary should be placed inside the `/usr/share/oem` directory. Home directory in ChromeOS doesn't allow to have executables.
+You need to restart shill with an option in order to allow tun interfaces creation: `sudo restart shill BLOCKED_DEVICES=tun0`.
+Use the the `driver: pppd` config option if you don't want to restart shill.
 
 ## HOWTO
 
