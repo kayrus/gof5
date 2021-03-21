@@ -60,10 +60,6 @@ On MacOS run the command below to avoid a `cannot be opened because the develope
 xattr -d com.apple.quarantine ./path/to/gof5_darwin
 ```
 
-## FreeBSD
-
-On FreeBSD only `wireguard` or `pppd` (a wrapper around the ppp binary) drivers work.
-
 ## Windows
 
 Windows version doesn't support `pppd` driver.
@@ -72,10 +68,20 @@ Windows version doesn't support `pppd` driver.
 
 Developer mode should be enabled, since gof5 requires root privileges.
 The binary should be placed inside the `/usr/share/oem` directory. Home directory in ChromeOS doesn't allow to have executables.
-You need to restart shill with an option in order to allow tun interfaces creation: `sudo restart shill BLOCKED_DEVICES=tun0`.
+You need to restart shill with an option in order to allow tun interface creation: `sudo restart shill BLOCKED_DEVICES=tun0`.
 Use the the `driver: pppd` config option if you don't want to restart shill.
 
 ## HOWTO
+
+### Build from source
+
+```sh
+$ make # gmake in freebsd or mingw make for windows
+# or build inside docker (linux version only)
+$ make docker
+```
+
+### Run
 
 ```sh
 # download the latest release
