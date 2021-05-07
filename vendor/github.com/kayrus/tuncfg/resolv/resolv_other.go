@@ -50,7 +50,7 @@ func (h *Handler) Set() error {
 		return nil
 	}
 
-	// NetworkManager has a higher priority
+	// NetworkManager has a higher priority than resolved, because nm can work on top of resolved.
 	if h.IsNetworkManager() {
 		if v, ok := interface{}(h).(interface{ setNetworkManager() error }); ok {
 			return v.setNetworkManager()
@@ -113,7 +113,7 @@ func (h *Handler) Restore() {
 		return
 	}
 
-	// NetworkManager has a higher priority
+	// NetworkManager has a higher priority than resolved, because nm can work on top of resolved.
 	if h.IsNetworkManager() {
 		if v, ok := interface{}(h).(interface{ restoreNetworkManager() }); ok {
 			v.restoreNetworkManager()

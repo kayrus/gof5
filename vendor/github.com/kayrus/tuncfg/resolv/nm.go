@@ -10,6 +10,7 @@ import (
 	"github.com/kayrus/tuncfg/log"
 
 	"github.com/godbus/dbus/v5"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -152,14 +153,47 @@ func (h *Handler) setNetworkManager() error {
 	}
 	defer conn.Close()
 
-	if h.isResolve() {
+	err = updateNetworkManager(conn, h.dbusNmConnectionPath, h.dnsServers, h.dnsSuffixes)
+	if err != nil {
+		return err
+	}
+
+	if len(h.nmViaResolved) > 0 {
+		// remove default DNS server from resolved.
+		obj := conn.Object(resolveInterface, resolveObjectPath)
+		linkDns := []resolveLinkDns{
+			resolveLinkDns{
+				Family:  unix.AF_INET,
+				Address: h.dnsServers[0].To4(),
+			},
+		}
+		for k, _ := range h.nmViaResolved {
+			err = obj.Call(resolveSetLinkDNS, 0, k, linkDns).Store()
+			if err != nil {
+				return fmt.Errorf("failed to set %q DNS servers: %v", h.dnsServers, err)
+			}
+		}
+	} else {
 		// detect DNS servers, hidden behind systemd-resolved
 		if err := h.detectRealDNS(conn); err != nil {
 			return fmt.Errorf("failed to detect original DNS servers: %v", err)
 		}
+
+		// remove default DNS server from resolved.
+		obj := conn.Object(resolveInterface, resolveObjectPath)
+		linkDns := []resolveLinkDns{
+			resolveLinkDns{
+				Family:  unix.AF_INET,
+				Address: h.dnsServers[0].To4(),
+			},
+		}
+		err = obj.Call(resolveSetLinkDNS, 0, h.iface.Index, linkDns).Store()
+		if err != nil {
+			return fmt.Errorf("failed to set %q DNS servers: %v", h.dnsServers, err)
+		}
 	}
 
-	return updateNetworkManager(conn, h.dbusNmConnectionPath, h.dnsServers, h.dnsSuffixes)
+	return nil
 }
 
 func (h *Handler) restoreNetworkManager() {

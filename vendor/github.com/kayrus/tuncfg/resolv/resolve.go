@@ -9,6 +9,7 @@ import (
 
 	"github.com/kayrus/tuncfg/log"
 
+	"github.com/godbus/dbus/v5"
 	"golang.org/x/sys/unix"
 )
 
@@ -16,9 +17,11 @@ const (
 	// systemd-resolved constants
 	resolveInterface      = "org.freedesktop.resolve1"
 	resolveObjectPath     = "/org/freedesktop/resolve1"
+	resolveGetLink        = resolveInterface + ".Manager.GetLink"
 	resolveSetLinkDNS     = resolveInterface + ".Manager.SetLinkDNS"
 	resolveSetLinkDomains = resolveInterface + ".Manager.SetLinkDomains"
 	resolveRevertLink     = resolveInterface + ".Manager.RevertLink"
+	resolveGetDNSProperty = resolveInterface + ".Link.DNS"
 )
 
 var resolveListenAddr = net.IPv4(127, 0, 0, 53)
@@ -34,11 +37,67 @@ type resolveLinkDomain struct {
 }
 
 func (h *Handler) isResolve() bool {
+	if len(h.nmViaResolved) > 0 {
+		return false
+	}
+
+	// detect default DNS server from resolved, when networkManager is also used
+	conn, err := newDbusConn()
+	if err != nil {
+		return false
+	}
+	defer conn.Close()
+
+	// get all interfaces
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return false
+	}
+	obj := conn.Object(resolveInterface, resolveObjectPath)
+	ifaceDNS := make(map[int][]net.IP)
+	for _, iface := range ifaces {
+		var devPath dbus.ObjectPath
+		err = obj.Call(resolveGetLink, 0, iface.Index).Store(&devPath)
+		if err != nil {
+			return false
+		}
+
+		dev := conn.Object(resolveInterface, devPath)
+		v, err := dev.GetProperty(resolveGetDNSProperty)
+		if err != nil {
+			return false
+		}
+		if v, ok := v.Value().([][]interface{}); ok {
+			for _, v := range v {
+				if v, ok := v[0].(int32); !ok {
+					continue
+				} else if v != unix.AF_INET {
+					continue
+				}
+				if len(v) > 1 {
+					if v, ok := v[1].([]byte); ok && net.IP(v).To4() != nil {
+						ifaceDNS[iface.Index] = append(ifaceDNS[iface.Index], v)
+					}
+				}
+			}
+		}
+	}
+
+	// there must be only one default interface
+	if len(ifaceDNS) == 1 {
+		h.nmViaResolved = ifaceDNS
+		// override h.origDnsServers
+		for _, v := range ifaceDNS {
+			h.origDnsServers = v
+		}
+	}
+
 	for _, ip := range h.origDnsServers {
 		if ip.Equal(resolveListenAddr) {
 			return true
 		}
 	}
+
 	return false
 }
 
