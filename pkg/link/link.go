@@ -323,12 +323,14 @@ func (l *vpnLink) WaitAndConfig(cfg *config.Config) {
 	}
 
 	// exclude local DNS servers, when they are not located inside the LAN
-	for _, v := range l.resolvHandler.GetOriginalDNS() {
-		localDNS := &net.IPNet{
-			IP:   v,
-			Mask: net.CIDRMask(32, 32),
+	if !cfg.DisableDNS {
+		for _, v := range l.resolvHandler.GetOriginalDNS() {
+			localDNS := &net.IPNet{
+				IP:   v,
+				Mask: net.CIDRMask(32, 32),
+			}
+			routes.RemoveNet(localDNS)
 		}
-		routes.RemoveNet(localDNS)
 	}
 
 	var gw net.IP
