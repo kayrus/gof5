@@ -223,6 +223,14 @@ func (l *vpnLink) configureDNS(cfg *config.Config) error {
 		return err
 	}
 
+	if cfg.DisableDNS {
+		// TODO: this is a hack to get real DNS servers, need to be fixed in "tuncfg"
+		l.resolvHandler.IsResolve()
+		// no further configuration is required
+		// get current DNS setting and exit
+		return nil
+	}
+
 	if len(cfg.DNS) > 0 && !l.resolvHandler.IsResolve() {
 		// combine local network search with VPN gateway search
 		dnsSuffixes = append(l.resolvHandler.GetOriginalSuffixes(), cfg.F5Config.Object.DNSSuffix...)
@@ -292,12 +300,10 @@ func (l *vpnLink) WaitAndConfig(cfg *config.Config) {
 		}()
 	}
 
-	if !cfg.DisableDNS {
-		err = l.configureDNS(cfg)
-		if err != nil {
-			l.ErrChan <- err
-			return
-		}
+	err = l.configureDNS(cfg)
+	if err != nil {
+		l.ErrChan <- err
+		return
 	}
 
 	// set routes
