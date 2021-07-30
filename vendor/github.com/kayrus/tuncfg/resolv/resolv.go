@@ -3,7 +3,6 @@ package resolv
 import (
 	"bufio"
 	"bytes"
-	"io/fs"
 	"io/ioutil"
 	"net"
 	"os"
@@ -51,7 +50,7 @@ type Handler struct {
 	backup         []byte
 	backupFilename string
 
-	mode fs.FileMode
+	mode os.FileMode
 }
 
 func New(name string, dnsServers []net.IP, dnsSuffixes []string, rewrite bool) (*Handler, error) {
