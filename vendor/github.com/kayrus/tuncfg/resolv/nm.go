@@ -162,12 +162,12 @@ func (h *Handler) setNetworkManager() error {
 		// remove default DNS server from resolved.
 		obj := conn.Object(resolveInterface, resolveObjectPath)
 		linkDns := []resolveLinkDns{
-			resolveLinkDns{
+			{
 				Family:  unix.AF_INET,
 				Address: h.dnsServers[0].To4(),
 			},
 		}
-		for k, _ := range h.nmViaResolved {
+		for k := range h.nmViaResolved {
 			err = obj.Call(resolveSetLinkDNS, 0, k, linkDns).Store()
 			if err != nil {
 				return fmt.Errorf("failed to set %q DNS servers: %v", h.dnsServers, err)
@@ -182,7 +182,7 @@ func (h *Handler) setNetworkManager() error {
 		// remove default DNS server from resolved.
 		obj := conn.Object(resolveInterface, resolveObjectPath)
 		linkDns := []resolveLinkDns{
-			resolveLinkDns{
+			{
 				Family:  unix.AF_INET,
 				Address: h.dnsServers[0].To4(),
 			},

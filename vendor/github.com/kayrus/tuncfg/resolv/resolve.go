@@ -5,6 +5,7 @@ package resolv
 import (
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 
 	"github.com/kayrus/tuncfg/log"
@@ -83,13 +84,17 @@ func (h *Handler) isResolve() bool {
 		}
 	}
 
-	// there must be only one default interface
-	if len(ifaceDNS) == 1 {
+	// interfaces with DNS found, pick the last one
+	if l := len(ifaceDNS); l > 0 {
+		keys := make([]int, 0, len(ifaceDNS))
+		for k := range ifaceDNS {
+			keys = append(keys, k)
+		}
+		sort.Ints(keys)
+
 		h.nmViaResolved = ifaceDNS
 		// override h.origDnsServers
-		for _, v := range ifaceDNS {
-			h.origDnsServers = v
-		}
+		h.origDnsServers = ifaceDNS[keys[l-1]]
 	}
 
 	for _, ip := range h.origDnsServers {
@@ -166,6 +171,7 @@ func (h *Handler) restoreResolve() {
 
 	obj := conn.Object(resolveInterface, resolveObjectPath)
 
+	// TODO: fix wireguard VPN DNS not being restored
 	err = obj.Call(resolveRevertLink, 0, h.iface.Index).Store()
 	if err != nil {
 		log.Errorf("%v", err)
