@@ -25,7 +25,7 @@ type Handler struct {
 
 	// only with linux dbus based managers
 	dbusShillServicePath string
-	dbusNmConnectionPath string
+	dbusNmConnectionPaths []string
 	// only with systemd-resolved
 	dnsDomains    []string
 	nmViaResolved map[int][]net.IP

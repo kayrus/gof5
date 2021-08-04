@@ -16,13 +16,15 @@ import (
 
 const (
 	// systemd-resolved constants
-	resolveInterface      = "org.freedesktop.resolve1"
-	resolveObjectPath     = "/org/freedesktop/resolve1"
-	resolveGetLink        = resolveInterface + ".Manager.GetLink"
-	resolveSetLinkDNS     = resolveInterface + ".Manager.SetLinkDNS"
-	resolveSetLinkDomains = resolveInterface + ".Manager.SetLinkDomains"
-	resolveRevertLink     = resolveInterface + ".Manager.RevertLink"
-	resolveGetDNSProperty = resolveInterface + ".Link.DNS"
+	resolveInterface               = "org.freedesktop.resolve1"
+	resolveObjectPath              = "/org/freedesktop/resolve1"
+	resolveGetLink                 = resolveInterface + ".Manager.GetLink"
+	resolveSetLinkDNS              = resolveInterface + ".Manager.SetLinkDNS"
+	resolveSetLinkDomains          = resolveInterface + ".Manager.SetLinkDomains"
+	resolveRevertLink              = resolveInterface + ".Manager.RevertLink"
+	resolveGetDNSProperty          = resolveInterface + ".Link.DNS"
+	resolveGetScopesProperty       = resolveInterface + ".Link.ScopesMask"
+	resolveGetDefaultRouteProperty = resolveInterface + ".Link.DefaultRoute"
 )
 
 var resolveListenAddr = net.IPv4(127, 0, 0, 53)
@@ -64,6 +66,21 @@ func (h *Handler) isResolve() bool {
 		}
 
 		dev := conn.Object(resolveInterface, devPath)
+
+		// get DNS scope
+		if v, err := dev.GetProperty(resolveGetScopesProperty); err != nil {
+			return false
+		} else if v, ok := v.Value().(uint64); !ok || v != 1 {
+			continue
+		}
+
+		// get default route
+		if v, err := dev.GetProperty(resolveGetDefaultRouteProperty); err != nil {
+			return false
+		} else if v, ok := v.Value().(bool); !ok || !v {
+			continue
+		}
+
 		v, err := dev.GetProperty(resolveGetDNSProperty)
 		if err != nil {
 			return false
@@ -170,6 +187,47 @@ func (h *Handler) restoreResolve() {
 	defer conn.Close()
 
 	obj := conn.Object(resolveInterface, resolveObjectPath)
+
+	fmt.Printf("restoring\n")
+	if len(h.nmViaResolved) > 0 {
+		for iface, dns := range h.nmViaResolved {
+			err = obj.Call(resolveRevertLink, 0, iface).Store()
+			if err != nil {
+				log.Errorf("%v", err)
+				return
+			}
+
+			linkDns := make([]resolveLinkDns, len(dns))
+			for i, s := range dns {
+				if v := s.To4(); v != nil {
+					linkDns[i] = resolveLinkDns{
+						Family:  unix.AF_INET,
+						Address: v,
+					}
+				} else {
+					linkDns[i] = resolveLinkDns{
+						Family:  unix.AF_INET6,
+						Address: s,
+					}
+				}
+			}
+
+			fmt.Printf("setting %v dns to %v iface\n", linkDns, iface)
+			err = obj.Call(resolveSetLinkDNS, 0, iface, linkDns).Store()
+			if err != nil {
+				log.Errorf("failed to set %q DNS servers: %v", dns, err)
+				return
+			}
+			/*
+				err = obj.Call(resolveRevertLink, 0, iface).Store()
+				if err != nil {
+					log.Errorf("%v", err)
+					return
+				}
+			*/
+		}
+		return
+	}
 
 	// TODO: fix wireguard VPN DNS not being restored
 	err = obj.Call(resolveRevertLink, 0, h.iface.Index).Store()

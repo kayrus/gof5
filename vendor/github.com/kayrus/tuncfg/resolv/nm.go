@@ -21,13 +21,14 @@ const (
 	nmGetDevices                 = nmInterface + ".GetDevices"
 	nmGetDeviceActiveConnection  = nmInterface + ".Device.ActiveConnection"
 	nmGetActiveConnectionDefault = nmInterface + ".Connection.Active.Default"
+	nmGetActiveConnectionVpn = nmInterface + ".Connection.Active.Vpn"
 	nmDeviceGetAppliedConnection = nmInterface + ".Device.GetAppliedConnection"
 	nmDeviceReapply              = nmInterface + ".Device.Reapply"
 	nmDnsManagerConfiguration    = nmInterface + ".DnsManager.Configuration"
 )
 
 func (h *Handler) isNetworkManager() bool {
-	if h.dbusNmConnectionPath != "" {
+	if h.dbusNmConnectionPaths != nil {
 		return true
 	}
 
@@ -57,15 +58,29 @@ func (h *Handler) isNetworkManager() bool {
 		if !ok || path == "/" {
 			continue
 		}
+
+		fmt.Printf("path: %+v\n", path)
+
 		dev = conn.Object(nmInterface, path)
 		v, err = dev.GetProperty(nmGetActiveConnectionDefault)
 		if err != nil {
 			return false
 		}
-		if def, ok := v.Value().(bool); ok && def {
-			h.dbusNmConnectionPath = string(devPath)
-			return true
+		fmt.Printf("active: %+#v\n", v)
+
+		vpn, err := dev.GetProperty(nmGetActiveConnectionVpn)
+		if err != nil {
+			return false
 		}
+		fmt.Printf("vpn: %+#v\n", vpn)
+
+		if def, ok := v.Value().(bool); ok && def {
+			h.dbusNmConnectionPaths = append(h.dbusNmConnectionPaths, string(devPath))
+		}
+	}
+
+	if h.dbusNmConnectionPaths != nil {
+		return true
 	}
 
 	return false
@@ -153,7 +168,7 @@ func (h *Handler) setNetworkManager() error {
 	}
 	defer conn.Close()
 
-	err = updateNetworkManager(conn, h.dbusNmConnectionPath, h.dnsServers, h.dnsSuffixes)
+	err = updateNetworkManager(conn, h.dbusNmConnectionPaths[0], h.dnsServers, h.dnsSuffixes)
 	if err != nil {
 		return err
 	}
@@ -204,10 +219,14 @@ func (h *Handler) restoreNetworkManager() {
 	}
 	defer conn.Close()
 
-	err = updateNetworkManager(conn, h.dbusNmConnectionPath, nil, nil)
-	if err != nil {
-		log.Errorf("%v", err)
-		return
+	for _, dbusNmConnectionPath := range h.dbusNmConnectionPaths {
+		fmt.Printf("Path: %v\n", dbusNmConnectionPath)
+		err = updateNetworkManager(conn, dbusNmConnectionPath, nil, nil)
+		if err != nil {
+			log.Errorf("%v", err)
+			return
+		}
 	}
+
 	return
 }

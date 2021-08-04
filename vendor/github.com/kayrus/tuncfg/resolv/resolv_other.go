@@ -113,17 +113,19 @@ func (h *Handler) Restore() {
 		return
 	}
 
-	// NetworkManager has a higher priority than resolved, because nm can work on top of resolved.
-	if h.IsNetworkManager() {
-		if v, ok := interface{}(h).(interface{ restoreNetworkManager() }); ok {
-			v.restoreNetworkManager()
+	if h.IsResolve() {
+		if v, ok := interface{}(h).(interface{ restoreResolve() }); ok {
+			fmt.Printf("restore resolve\n")
+			v.restoreResolve()
 			return
 		}
 	}
 
-	if h.IsResolve() {
-		if v, ok := interface{}(h).(interface{ restoreResolve() }); ok {
-			v.restoreResolve()
+	// NetworkManager has a higher priority than resolved, because nm can work on top of resolved.
+	if h.IsNetworkManager() {
+		if v, ok := interface{}(h).(interface{ restoreNetworkManager() }); ok {
+			fmt.Printf("restore NM\n")
+			v.restoreNetworkManager()
 			return
 		}
 	}
