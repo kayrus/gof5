@@ -6,6 +6,8 @@
 package winipcfg
 
 import (
+	"encoding/binary"
+	"fmt"
 	"net"
 	"unsafe"
 
@@ -587,6 +589,10 @@ type RouteData struct {
 	Metric      uint32
 }
 
+func (routeData *RouteData) String() string {
+	return fmt.Sprintf("%+v", *routeData)
+}
+
 // IPAdapterDNSSuffix structure stores a DNS suffix in a linked list of DNS suffixes for a particular adapter.
 // https://docs.microsoft.com/en-us/windows/desktop/api/iptypes/ns-iptypes-_ip_adapter_dns_suffix
 type IPAdapterDNSSuffix struct {
@@ -679,8 +685,7 @@ func (row *MibIPInterfaceRow) Set() error {
 
 // get method returns all table rows as a Go slice.
 func (tab *mibIPInterfaceTable) get() (s []MibIPInterfaceRow) {
-	unsafeSlice(unsafe.Pointer(&s), unsafe.Pointer(&tab.table[0]), int(tab.numEntries))
-	return
+	return unsafe.Slice(&tab.table[0], tab.numEntries)
 }
 
 // free method frees the buffer allocated by the functions that return tables of network interfaces, addresses, and routes.
@@ -717,8 +722,7 @@ func (row *MibIfRow2) get() (ret error) {
 
 // get method returns all table rows as a Go slice.
 func (tab *mibIfTable2) get() (s []MibIfRow2) {
-	unsafeSlice(unsafe.Pointer(&s), unsafe.Pointer(&tab.table[0]), int(tab.numEntries))
-	return
+	return unsafe.Slice(&tab.table[0], tab.numEntries)
 }
 
 // free method frees the buffer allocated by the functions that return tables of network interfaces, addresses, and routes.
@@ -734,6 +738,16 @@ type RawSockaddrInet struct {
 	data   [26]byte
 }
 
+func ntohs(i uint16) uint16 {
+	return binary.BigEndian.Uint16((*[2]byte)(unsafe.Pointer(&i))[:])
+}
+
+func htons(i uint16) uint16 {
+	b := make([]byte, 2)
+	binary.BigEndian.PutUint16(b, i)
+	return *(*uint16)(unsafe.Pointer(&b[0]))
+}
+
 // SetIP method sets family, address, and port to the given IPv4 or IPv6 address and port.
 // All other members of the structure are set to zero.
 func (addr *RawSockaddrInet) SetIP(ip net.IP, port uint16) error {
@@ -741,7 +755,7 @@ func (addr *RawSockaddrInet) SetIP(ip net.IP, port uint16) error {
 		addr4 := (*windows.RawSockaddrInet4)(unsafe.Pointer(addr))
 		addr4.Family = windows.AF_INET
 		copy(addr4.Addr[:], v4)
-		addr4.Port = port
+		addr4.Port = htons(port)
 		for i := 0; i < 8; i++ {
 			addr4.Zero[i] = 0
 		}
@@ -751,7 +765,7 @@ func (addr *RawSockaddrInet) SetIP(ip net.IP, port uint16) error {
 	if v6 := ip.To16(); v6 != nil {
 		addr6 := (*windows.RawSockaddrInet6)(unsafe.Pointer(addr))
 		addr6.Family = windows.AF_INET6
-		addr6.Port = port
+		addr6.Port = htons(port)
 		addr6.Flowinfo = 0
 		copy(addr6.Addr[:], v6)
 		addr6.Scope_id = 0
@@ -761,8 +775,7 @@ func (addr *RawSockaddrInet) SetIP(ip net.IP, port uint16) error {
 	return windows.ERROR_INVALID_PARAMETER
 }
 
-// IP method returns IPv4 or IPv6 address.
-// If the address is neither IPv4 not IPv6 nil is returned.
+// IP returns IPv4 or IPv6 address, or nil if the address is neither.
 func (addr *RawSockaddrInet) IP() net.IP {
 	switch addr.Family {
 	case windows.AF_INET:
@@ -773,6 +786,19 @@ func (addr *RawSockaddrInet) IP() net.IP {
 	}
 
 	return nil
+}
+
+// Port returns the port if the address if IPv4 or IPv6, or 0 if neither.
+func (addr *RawSockaddrInet) Port() uint16 {
+	switch addr.Family {
+	case windows.AF_INET:
+		return ntohs((*windows.RawSockaddrInet4)(unsafe.Pointer(addr)).Port)
+
+	case windows.AF_INET6:
+		return ntohs((*windows.RawSockaddrInet6)(unsafe.Pointer(addr)).Port)
+	}
+
+	return 0
 }
 
 // Init method initializes a MibUnicastIPAddressRow structure with default values for a unicast IP address entry on the local computer.
@@ -807,8 +833,7 @@ func (row *MibUnicastIPAddressRow) Delete() error {
 
 // get method returns all table rows as a Go slice.
 func (tab *mibUnicastIPAddressTable) get() (s []MibUnicastIPAddressRow) {
-	unsafeSlice(unsafe.Pointer(&s), unsafe.Pointer(&tab.table[0]), int(tab.numEntries))
-	return
+	return unsafe.Slice(&tab.table[0], tab.numEntries)
 }
 
 // free method frees the buffer allocated by the functions that return tables of network interfaces, addresses, and routes.
@@ -837,8 +862,7 @@ func (row *MibAnycastIPAddressRow) Delete() error {
 
 // get method returns all table rows as a Go slice.
 func (tab *mibAnycastIPAddressTable) get() (s []MibAnycastIPAddressRow) {
-	unsafeSlice(unsafe.Pointer(&s), unsafe.Pointer(&tab.table[0]), int(tab.numEntries))
-	return
+	return unsafe.Slice(&tab.table[0], tab.numEntries)
 }
 
 // free method frees the buffer allocated by the functions that return tables of network interfaces, addresses, and routes.
@@ -930,8 +954,7 @@ func (row *MibIPforwardRow2) Delete() error {
 
 // get method returns all table rows as a Go slice.
 func (tab *mibIPforwardTable2) get() (s []MibIPforwardRow2) {
-	unsafeSlice(unsafe.Pointer(&s), unsafe.Pointer(&tab.table[0]), int(tab.numEntries))
-	return
+	return unsafe.Slice(&tab.table[0], tab.numEntries)
 }
 
 // free method frees the buffer allocated by the functions that return tables of network interfaces, addresses, and routes.
@@ -941,11 +964,11 @@ func (tab *mibIPforwardTable2) free() {
 }
 
 //
-// Undocumented DNS API
+// DNS API
 //
 
-// dnsInterfaceSettings is mean to be used with setInterfaceDnsSettings
-type dnsInterfaceSettings struct {
+// DnsInterfaceSettings is meant to be used with SetInterfaceDnsSettings
+type DnsInterfaceSettings struct {
 	Version             uint32
 	_                   [4]byte
 	Flags               uint64
@@ -960,37 +983,22 @@ type dnsInterfaceSettings struct {
 }
 
 const (
-	disVersion1 = 1
-	disVersion2 = 2
+	DnsInterfaceSettingsVersion1 = 1 // for DnsInterfaceSettings
+	DnsInterfaceSettingsVersion2 = 2 // for DnsInterfaceSettingsEx
+	DnsInterfaceSettingsVersion3 = 3 // for DnsInterfaceSettings3
 
-	disFlagsIPv6                = 0x1
-	disFlagsNameServer          = 0x2
-	disFlagsSearchList          = 0x4
-	disFlagsRegistrationEnabled = 0x8
-	disFlagsRegisterAdapterName = 0x10
-	disFlagsDomain              = 0x20
-	disFlagsHostname            = 0x40 // ??
-	disFlagsEnableLLMNR         = 0x80
-	disFlagsQueryAdapterName    = 0x100
-	disFlagsProfileNameServer   = 0x200
-	disFlagsVersion2            = 0x400 // ?? - v2 only
-	disFlagsMoreFlags           = 0x800 // ?? - v2 only
+	DnsInterfaceSettingsFlagIPv6                        = 0x0001
+	DnsInterfaceSettingsFlagNameserver                  = 0x0002
+	DnsInterfaceSettingsFlagSearchList                  = 0x0004
+	DnsInterfaceSettingsFlagRegistrationEnabled         = 0x0008
+	DnsInterfaceSettingsFlagRegisterAdapterName         = 0x0010
+	DnsInterfaceSettingsFlagDomain                      = 0x0020
+	DnsInterfaceSettingsFlagHostname                    = 0x0040
+	DnsInterfaceSettingsFlagEnableLLMNR                 = 0x0080
+	DnsInterfaceSettingsFlagQueryAdapterName            = 0x0100
+	DnsInterfaceSettingsFlagProfileNameserver           = 0x0200
+	DnsInterfaceSettingsFlagDisableUnconstrainedQueries = 0x0400 // v2 only
+	DnsInterfaceSettingsFlagSupplementalSearchList      = 0x0800 // v2 only
+	DnsInterfaceSettingsFlagDOH                         = 0x1000 // v3 only
+	DnsInterfaceSettingsFlagDOHProfile                  = 0x2000 // v3 only
 )
-
-// unsafeSlice updates the slice slicePtr to be a slice
-// referencing the provided data with its length & capacity set to
-// lenCap.
-//
-// TODO: when Go 1.16 or Go 1.17 is the minimum supported version,
-// update callers to use unsafe.Slice instead of this.
-func unsafeSlice(slicePtr, data unsafe.Pointer, lenCap int) {
-	type sliceHeader struct {
-		Data unsafe.Pointer
-		Len  int
-		Cap  int
-	}
-	h := (*sliceHeader)(slicePtr)
-	h.Data = data
-	h.Len = lenCap
-	h.Cap = lenCap
-}

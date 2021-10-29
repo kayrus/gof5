@@ -19,10 +19,11 @@ library or elsewhere in go packages.
 
 | Python netaddr | Go                                |
 |----------------|-----------------------------------|
+| EUI            | ???                               |
 | IPAddress      | Use [IP] from [net]\*             |
 | IPNetwork      | Use [IPNet] from [net]\*\*        |
 | IPSet          | Use [IPSet]                       |
-| IPRange        | Not yet implemented               |
+| IPRange        | Use [IPRange]                     |
 | IPGlob         | Not yet implemented               |
 
 \* The [net] package in golang parses IPv4 address as IPv4 encoded IPv6
@@ -37,7 +38,6 @@ in this package that always parses IPv4 as 4 byte addresses.
 This needs a lot of work. Help if you can!
 
 - More test coverage
-- Implementation of ip ranges like in [netaddr]
 
 [netaddr]: https://netaddr.readthedocs.io/en/latest/installation.html
 [net]: https://golang.org/pkg/net/

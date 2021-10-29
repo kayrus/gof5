@@ -1,10 +1,10 @@
 before_install:
 - |-
-    case $TRAVIS_OS_NAME in
-      windows)
+    case "$(go env GOOS)" in
+      *windows*)
         export MAKE=mingw32-make
         ;;
-      freebsd)
+      *freebsd*)
         export MAKE=gmake
         ;;
       *)
@@ -14,7 +14,7 @@ before_install:
 dist: focal
 language: go
 go:
-- 1.16.x
+- 1.17.x
 branches:
   only:
   - "/v\\d+\\.\\d+\\.\\d+/"
@@ -27,6 +27,8 @@ matrix:
   - os: osx
   - os: windows
   - os: freebsd
+script:
+- $MAKE
 before_deploy:
 - $MAKE
 deploy:

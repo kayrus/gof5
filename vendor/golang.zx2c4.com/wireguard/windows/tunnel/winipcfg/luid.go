@@ -98,6 +98,9 @@ func (luid LUID) AddIPAddress(address net.IPNet) error {
 	row := &MibUnicastIPAddressRow{}
 	row.Init()
 	row.InterfaceLUID = luid
+	row.DadState = DadStatePreferred
+	row.ValidLifetime = 0xffffffff
+	row.PreferredLifetime = 0xffffffff
 	err := row.Address.SetIP(address.IP, 0)
 	if err != nil {
 		return err
@@ -189,6 +192,8 @@ func (luid LUID) Route(destination net.IPNet, nextHop net.IP) (*MibIPforwardRow2
 	row := &MibIPforwardRow2{}
 	row.Init()
 	row.InterfaceLUID = luid
+	row.ValidLifetime = 0xffffffff
+	row.PreferredLifetime = 0xffffffff
 	err := row.DestinationPrefix.SetIPNet(destination)
 	if err != nil {
 		return nil, err
@@ -353,17 +358,17 @@ func (luid LUID) SetDNS(family AddressFamily, servers []net.IP, domains []string
 	if err != nil {
 		return err
 	}
-	var maybeV6 uint64
-	if family == windows.AF_INET6 {
-		maybeV6 = disFlagsIPv6
-	}
-	// For >= Windows 10 1809
-	err = setInterfaceDnsSettings(*guid, &dnsInterfaceSettings{
-		Version:    disVersion1,
-		Flags:      disFlagsNameServer | disFlagsSearchList | maybeV6,
+	dnsInterfaceSettings := &DnsInterfaceSettings{
+		Version:    DnsInterfaceSettingsVersion1,
+		Flags:      DnsInterfaceSettingsFlagNameserver | DnsInterfaceSettingsFlagSearchList,
 		NameServer: servers16,
 		SearchList: domains16,
-	})
+	}
+	if family == windows.AF_INET6 {
+		dnsInterfaceSettings.Flags |= DnsInterfaceSettingsFlagIPv6
+	}
+	// For >= Windows 10 1809
+	err = SetInterfaceDnsSettings(*guid, dnsInterfaceSettings)
 	if err == nil || !errors.Is(err, windows.ERROR_PROC_NOT_FOUND) {
 		return err
 	}

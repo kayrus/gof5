@@ -285,3 +285,23 @@ func IPMax(a, b net.IP) net.IP {
 	}
 	return a
 }
+
+// IPv4 returns the IP address (in 4-byte form) of the
+// IPv4 address a.b.c.d.
+func IPv4(a, b, c, d byte) net.IP {
+	p := make(net.IP, net.IPv4len)
+	p[0] = a
+	p[1] = b
+	p[2] = c
+	p[3] = d
+	return p
+}
+
+// IPv4Net returns the IPNet (in 4-byte form) of the
+// IPv4 address a.b.c.d/p.
+func IPv4Net(a, b, c, d byte, p int) net.IPNet {
+	return net.IPNet{
+		IP:   IPv4(a, b, c, d),
+		Mask: net.CIDRMask(p, 8*net.IPv4len),
+	}
+}

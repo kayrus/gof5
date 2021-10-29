@@ -3,8 +3,8 @@ language: go
 go_import_path: github.com/IBM/netaddr
 
 go:
-- "1.11.11"
-- "1.12.6"
+- "1.15"
+- "1.16"
 
 script:
 - go test -cover ./...

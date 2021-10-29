@@ -1,12 +1,14 @@
-# github.com/IBM/netaddr v1.4.0
-## explicit
+# github.com/IBM/netaddr v1.5.0
+## explicit; go 1.16
 github.com/IBM/netaddr
 # github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
+## explicit
 github.com/chzyer/readline
 # github.com/fatih/color v1.10.0
-## explicit
+## explicit; go 1.13
 github.com/fatih/color
-# github.com/godbus/dbus/v5 v5.0.3
+# github.com/godbus/dbus/v5 v5.0.6
+## explicit; go 1.12
 github.com/godbus/dbus/v5
 # github.com/howeyc/gopass v0.0.0-20190910152052-7cb4b85ec19c
 ## explicit
@@ -19,33 +21,37 @@ github.com/hpcloud/tail/util
 github.com/hpcloud/tail/watch
 github.com/hpcloud/tail/winfile
 # github.com/juju/ansiterm v0.0.0-20180109212912-720a0952cc2a
+## explicit
 github.com/juju/ansiterm
 github.com/juju/ansiterm/tabwriter
-# github.com/kayrus/tuncfg v0.0.0-20210730110630-36a04c3b2644
-## explicit
+# github.com/kayrus/tuncfg v0.0.0-20211029100448-15eab7b00382
+## explicit; go 1.16
 github.com/kayrus/tuncfg/log
 github.com/kayrus/tuncfg/resolv
 github.com/kayrus/tuncfg/route
 github.com/kayrus/tuncfg/tun
 # github.com/lunixbochs/vtclean v0.0.0-20180621232353-2d01aacdc34a
+## explicit
 github.com/lunixbochs/vtclean
 # github.com/manifoldco/promptui v0.8.0
-## explicit
+## explicit; go 1.12
 github.com/manifoldco/promptui
 github.com/manifoldco/promptui/list
 github.com/manifoldco/promptui/screenbuf
 # github.com/mattn/go-colorable v0.1.8
+## explicit; go 1.13
 github.com/mattn/go-colorable
 # github.com/mattn/go-isatty v0.0.12
+## explicit; go 1.12
 github.com/mattn/go-isatty
 # github.com/miekg/dns v1.1.40
-## explicit
+## explicit; go 1.12
 github.com/miekg/dns
 # github.com/mitchellh/go-homedir v1.1.0
 ## explicit
 github.com/mitchellh/go-homedir
 # github.com/pion/dtls/v2 v2.0.8
-## explicit
+## explicit; go 1.13
 github.com/pion/dtls/v2
 github.com/pion/dtls/v2/internal/ciphersuite
 github.com/pion/dtls/v2/internal/closer
@@ -64,60 +70,71 @@ github.com/pion/dtls/v2/pkg/protocol/extension
 github.com/pion/dtls/v2/pkg/protocol/handshake
 github.com/pion/dtls/v2/pkg/protocol/recordlayer
 # github.com/pion/logging v0.2.2
+## explicit; go 1.12
 github.com/pion/logging
 # github.com/pion/transport v0.12.2
+## explicit; go 1.12
 github.com/pion/transport/connctx
 github.com/pion/transport/deadline
 github.com/pion/transport/packetio
 github.com/pion/transport/replaydetector
 # github.com/pion/udp v0.1.0
+## explicit; go 1.14
 github.com/pion/udp
 # github.com/sigurn/crc16 v0.0.0-20160107003519-da416fad5162
+## explicit
 github.com/sigurn/crc16
 # github.com/sigurn/utils v0.0.0-20151230205143-f19e41f79f8f
+## explicit
 github.com/sigurn/utils
 # github.com/vishvananda/netlink v1.1.0
-## explicit
+## explicit; go 1.12
 github.com/vishvananda/netlink
 github.com/vishvananda/netlink/nl
 # github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df
+## explicit; go 1.12
 github.com/vishvananda/netns
 # github.com/zaninime/go-hdlc v1.1.1
-## explicit
+## explicit; go 1.12
 github.com/zaninime/go-hdlc
-# golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
+# golang.org/x/crypto v0.0.0-20210921155107-089bfa567519
+## explicit; go 1.17
 golang.org/x/crypto/cryptobyte
 golang.org/x/crypto/cryptobyte/asn1
 golang.org/x/crypto/curve25519
+golang.org/x/crypto/curve25519/internal/field
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/ed25519/internal/edwards25519
 golang.org/x/crypto/ssh/terminal
-# golang.org/x/net v0.0.0-20210226172049-e18ecbb05110
-## explicit
+# golang.org/x/net v0.0.0-20211020060615-d418f374d309
+## explicit; go 1.17
 golang.org/x/net/bpf
 golang.org/x/net/internal/iana
 golang.org/x/net/internal/socket
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
 golang.org/x/net/route
-# golang.org/x/sys v0.0.0-20210305230114-8fe3ee5dd75b
-## explicit
+# golang.org/x/sys v0.0.0-20211025201205-69cdffdb9359
+## explicit; go 1.17
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
 # golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1
+## explicit; go 1.11
 golang.org/x/term
 # golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
+## explicit; go 1.11
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
-# golang.zx2c4.com/wireguard v0.0.0-20210307162820-f4695db51c39
+# golang.zx2c4.com/wireguard v0.0.0-20211028114750-eb6302c7eb71
+## explicit; go 1.17
 golang.zx2c4.com/wireguard/rwcancel
 golang.zx2c4.com/wireguard/tun
 golang.zx2c4.com/wireguard/tun/wintun
-golang.zx2c4.com/wireguard/tun/wintun/memmod
-# golang.zx2c4.com/wireguard/windows v0.3.9-0.20210307162607-39f3c66fde96
+# golang.zx2c4.com/wireguard/windows v0.5.2-0.20211028141252-9fe93eaf9c4a
+## explicit; go 1.17
 golang.zx2c4.com/wireguard/windows/tunnel/winipcfg
 # gopkg.in/fsnotify.v1 v1.4.7
 ## explicit
@@ -126,10 +143,11 @@ gopkg.in/fsnotify.v1
 ## explicit
 gopkg.in/tomb.v1
 # gopkg.in/yaml.v2 v2.4.0
-## explicit
+## explicit; go 1.15
 gopkg.in/yaml.v2
 # kernel.org/pub/linux/libs/security/libcap/cap v1.2.48
-## explicit
+## explicit; go 1.11
 kernel.org/pub/linux/libs/security/libcap/cap
 # kernel.org/pub/linux/libs/security/libcap/psx v1.2.48
+## explicit; go 1.11
 kernel.org/pub/linux/libs/security/libcap/psx

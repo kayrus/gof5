@@ -10,6 +10,7 @@ package tun
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -55,6 +56,11 @@ func (tun *NativeTun) routineHackListener() {
 	/* This is needed for the detection to work across network namespaces
 	 * If you are reading this and know a better method, please get in touch.
 	 */
+	last := 0
+	const (
+		up   = 1
+		down = 2
+	)
 	for {
 		sysconn, err := tun.tunFile.SyscallConn()
 		if err != nil {
@@ -68,13 +74,19 @@ func (tun *NativeTun) routineHackListener() {
 		}
 		switch err {
 		case unix.EINVAL:
-			// If the tunnel is up, it reports that write() is
-			// allowed but we provided invalid data.
-			tun.events <- EventUp
+			if last != up {
+				// If the tunnel is up, it reports that write() is
+				// allowed but we provided invalid data.
+				tun.events <- EventUp
+				last = up
+			}
 		case unix.EIO:
-			// If the tunnel is down, it reports that no I/O
-			// is possible, without checking our provided data.
-			tun.events <- EventDown
+			if last != down {
+				// If the tunnel is down, it reports that no I/O
+				// is possible, without checking our provided data.
+				tun.events <- EventDown
+				last = down
+			}
 		default:
 			return
 		}
@@ -318,32 +330,30 @@ func (tun *NativeTun) nameSlow() (string, error) {
 	return string(name), nil
 }
 
-func (tun *NativeTun) Write(buff []byte, offset int) (int, error) {
-
+func (tun *NativeTun) Write(buf []byte, offset int) (int, error) {
 	if tun.nopi {
-		buff = buff[offset:]
+		buf = buf[offset:]
 	} else {
 		// reserve space for header
-
-		buff = buff[offset-4:]
+		buf = buf[offset-4:]
 
 		// add packet information header
-
-		buff[0] = 0x00
-		buff[1] = 0x00
-
-		if buff[4]>>4 == ipv6.Version {
-			buff[2] = 0x86
-			buff[3] = 0xdd
+		buf[0] = 0x00
+		buf[1] = 0x00
+		if buf[4]>>4 == ipv6.Version {
+			buf[2] = 0x86
+			buf[3] = 0xdd
 		} else {
-			buff[2] = 0x08
-			buff[3] = 0x00
+			buf[2] = 0x08
+			buf[3] = 0x00
 		}
 	}
 
-	// write
-
-	return tun.tunFile.Write(buff)
+	n, err := tun.tunFile.Write(buf)
+	if errors.Is(err, syscall.EBADFD) {
+		err = os.ErrClosed
+	}
+	return n, err
 }
 
 func (tun *NativeTun) Flush() error {
@@ -351,22 +361,26 @@ func (tun *NativeTun) Flush() error {
 	return nil
 }
 
-func (tun *NativeTun) Read(buff []byte, offset int) (int, error) {
+func (tun *NativeTun) Read(buf []byte, offset int) (n int, err error) {
 	select {
-	case err := <-tun.errors:
-		return 0, err
+	case err = <-tun.errors:
 	default:
 		if tun.nopi {
-			return tun.tunFile.Read(buff[offset:])
+			n, err = tun.tunFile.Read(buf[offset:])
 		} else {
-			buff := buff[offset-4:]
-			n, err := tun.tunFile.Read(buff[:])
-			if n < 4 {
-				return 0, err
+			buff := buf[offset-4:]
+			n, err = tun.tunFile.Read(buff[:])
+			if errors.Is(err, syscall.EBADFD) {
+				err = os.ErrClosed
 			}
-			return n - 4, err
+			if n < 4 {
+				n = 0
+			} else {
+				n -= 4
+			}
 		}
 	}
+	return
 }
 
 func (tun *NativeTun) Events() chan Event {
@@ -405,6 +419,7 @@ func CreateTUN(name string, mtu int) (Device, error) {
 	var flags uint16 = unix.IFF_TUN // | unix.IFF_NO_PI (disabled for TUN status hack)
 	nameBytes := []byte(name)
 	if len(nameBytes) >= unix.IFNAMSIZ {
+		unix.Close(nfd)
 		return nil, fmt.Errorf("interface name too long: %w", unix.ENAMETOOLONG)
 	}
 	copy(ifr[:], nameBytes)
@@ -417,17 +432,19 @@ func CreateTUN(name string, mtu int) (Device, error) {
 		uintptr(unsafe.Pointer(&ifr[0])),
 	)
 	if errno != 0 {
+		unix.Close(nfd)
 		return nil, errno
 	}
+
 	err = unix.SetNonblock(nfd, true)
+	if err != nil {
+		unix.Close(nfd)
+		return nil, err
+	}
 
 	// Note that the above -- open,ioctl,nonblock -- must happen prior to handing it to netpoll as below this line.
 
 	fd := os.NewFile(uintptr(nfd), cloneDevicePath)
-	if err != nil {
-		return nil, err
-	}
-
 	return CreateTUNFromFile(fd, mtu)
 }
 
