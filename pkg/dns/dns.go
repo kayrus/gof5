@@ -20,13 +20,14 @@ func Start(cfg *config.Config, errChan chan error, tunDown chan struct{}) {
 		dnsHandler(w, m, cfg, "tcp")
 	}
 
+	listen := net.JoinHostPort(cfg.ListenDNS.String(), "53")
 	srvUDP := &dns.Server{
-		Addr:    cfg.ListenDNS.String() + ":53",
+		Addr:    listen,
 		Net:     "udp",
 		Handler: dns.HandlerFunc(dnsUDPHandler),
 	}
 	srvTCP := &dns.Server{
-		Addr:    cfg.ListenDNS.String() + ":53",
+		Addr:    listen,
 		Net:     "tcp",
 		Handler: dns.HandlerFunc(dnsTCPHandler),
 	}
@@ -77,7 +78,7 @@ func dnsHandler(w dns.ResponseWriter, m *dns.Msg, cfg *config.Config, proto stri
 func handleCustom(w dns.ResponseWriter, o *dns.Msg, c *dns.Client, ip net.IP) error {
 	m := new(dns.Msg)
 	o.CopyTo(m)
-	r, _, err := c.Exchange(m, ip.String()+":53")
+	r, _, err := c.Exchange(m, net.JoinHostPort(ip.String(), "53"))
 	if r == nil || err != nil {
 		return fmt.Errorf("failed to resolve %q", m.Question[0].Name)
 	}
