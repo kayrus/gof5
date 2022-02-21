@@ -15,7 +15,7 @@ import (
 )
 
 type Config struct {
-	Debug       bool           `yanl:"-"`
+	Debug       bool           `yaml:"-"`
 	Driver      string         `yaml:"driver"`
 	ListenDNS   net.IP         `yaml:"-"`
 	DNS         []string       `yaml:"dns"`
@@ -29,6 +29,8 @@ type Config struct {
 	// rewrite /etc/resolv.conf instead of renaming
 	// required in ChromeOS, where /etc/resolv.conf cannot be renamed
 	RewriteResolv bool `yaml:"rewriteResolv"`
+	// tls regeneration, tls.RenegotiateNever by default
+	Renegotiation string `yaml:"renegotiation"`
 	// list of detected local DNS servers
 	DNSServers []net.IP `yaml:"-"`
 	// config path

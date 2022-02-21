@@ -35,6 +35,7 @@ const (
 func tlsConfig(opts *Options, insecure bool) (*tls.Config, error) {
 	config := &tls.Config{
 		InsecureSkipVerify: insecure,
+		Renegotiation:      opts.Renegotiation,
 	}
 
 	if opts.CACert != "" {
