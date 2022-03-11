@@ -307,7 +307,7 @@ func login(c *http.Client, server string, username, password *string) error {
 	return nil
 }
 
-func parseProfile(reader io.ReadCloser, profileIndex int) (string, error) {
+func parseProfile(reader io.ReadCloser, profileIndex int, profileName string) (string, error) {
 	var profiles config.Profiles
 	dec := xml.NewDecoder(reader)
 	err := dec.Decode(&profiles)
@@ -319,6 +319,9 @@ func parseProfile(reader io.ReadCloser, profileIndex int) (string, error) {
 	if profiles.Type == "VPN" {
 		prfls := make([]string, len(profiles.Favorites))
 		for i, p := range profiles.Favorites {
+			if profileName != "" && profileName == p.Name {
+				profileIndex = i
+			}
 			prfls[i] = fmt.Sprintf("%d:%s", i, p.Name)
 		}
 		log.Printf("Found F5 VPN profiles: %q", prfls)

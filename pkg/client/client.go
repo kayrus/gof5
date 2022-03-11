@@ -32,7 +32,53 @@ type Options struct {
 	Sel           bool
 	Version       bool
 	ProfileIndex  int
+	ProfileName   string
 	Renegotiation tls.RenegotiationSupport
+}
+
+func UrlHandlerF5Vpn(opts *Options, s string) error {
+	u, err := url.Parse(s)
+	if err != nil {
+		return err
+	}
+
+	if u.Scheme != "f5-vpn" {
+		return fmt.Errorf("invalid scheme %v expected f5-vpn", u.Scheme)
+	}
+
+	m, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		return err
+	}
+
+	resourceTypes := m["resourcetype"]
+	resourceNames := m["resourcename"]
+	if len(resourceTypes) == len(resourceNames) {
+		for i := range resourceTypes {
+			if resourceTypes[i] == "network_access" {
+				opts.ProfileName = resourceNames[i]
+				break
+			}
+		}
+	}
+
+	opts.Server = m["server"][0]
+	tokenUrl := fmt.Sprintf("%s://%s:%s/vdesk/get_sessid_for_token.php3", m["protocol"][0], opts.Server, m["port"][0])
+	request, err := http.NewRequest(http.MethodGet, tokenUrl, nil)
+	if err != nil {
+		return err
+	}
+	otc := m["otc"]
+	request.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Add("X-Access-Session-Token", otc[len(otc)-1])
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return err
+	}
+
+	opts.SessionID = response.Header.Get("X-Access-Session-ID")
+	return nil
 }
 
 func Connect(opts *Options) error {
@@ -152,7 +198,7 @@ func Connect(opts *Options) error {
 		return fmt.Errorf("wrong response code on profiles get: %d", resp.StatusCode)
 	}
 
-	profile, err := parseProfile(resp.Body, opts.ProfileIndex)
+	profile, err := parseProfile(resp.Body, opts.ProfileIndex, opts.ProfileName)
 	if err != nil {
 		return fmt.Errorf("failed to parse VPN profiles: %s", err)
 	}
