@@ -144,6 +144,8 @@ PPPdArgs: []
 # disableDNS allows to completely disable DNS handling,
 # i.e. don't alter system DNS (e.g. /etc/resolv.conf) at all
 disableDNS: false
+# TLS renegotiation support as defined in tls.RenegotiationSupport, disabled by default
+renegotiation: RenegotiateNever
 # A list of DNS zones to be resolved by VPN DNS servers
 # When empty, every DNS query will be resolved by VPN DNS servers
 dns:

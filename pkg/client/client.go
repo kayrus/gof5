@@ -1,6 +1,7 @@
 package client
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -19,18 +20,19 @@ import (
 )
 
 type Options struct {
-	Server       string
-	Username     string
-	Password     string
-	SessionID    string
-	CACert       string
-	Cert         string
-	Key          string
-	CloseSession bool
-	Debug        bool
-	Sel          bool
-	Version      bool
-	ProfileIndex int
+	Server        string
+	Username      string
+	Password      string
+	SessionID     string
+	CACert        string
+	Cert          string
+	Key           string
+	CloseSession  bool
+	Debug         bool
+	Sel           bool
+	Version       bool
+	ProfileIndex  int
+	Renegotiation tls.RenegotiationSupport
 }
 
 func Connect(opts *Options) error {
@@ -64,6 +66,17 @@ func Connect(opts *Options) error {
 	cfg, err := config.ReadConfig(opts.Debug)
 	if err != nil {
 		return err
+	}
+
+	switch cfg.Renegotiation {
+	case "RenegotiateOnceAsClient":
+		opts.Renegotiation = tls.RenegotiateOnceAsClient
+	case "RenegotiateFreelyAsClient":
+		opts.Renegotiation = tls.RenegotiateFreelyAsClient
+	case "RenegotiateNever", "":
+		opts.Renegotiation = tls.RenegotiateNever
+	default:
+		return fmt.Errorf("unknown renegotiation value: '%s'", cfg.Renegotiation)
 	}
 
 	cookieJar, err := cookiejar.New(nil)
