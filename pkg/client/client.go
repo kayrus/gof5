@@ -73,8 +73,7 @@ func Connect(opts *Options) error {
 		opts.Renegotiation = tls.RenegotiateOnceAsClient
 	case "RenegotiateFreelyAsClient":
 		opts.Renegotiation = tls.RenegotiateFreelyAsClient
-	case "RenegotiateNever":
-	case "":
+	case "RenegotiateNever", "":
 		opts.Renegotiation = tls.RenegotiateNever
 	default:
 		return fmt.Errorf("unknown renegotiation value: '%s'", cfg.Renegotiation)
