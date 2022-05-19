@@ -55,7 +55,6 @@ func Start(cfg *config.Config, errChan chan error, tunDown chan struct{}) {
 
 func dnsHandler(w dns.ResponseWriter, m *dns.Msg, cfg *config.Config, proto string) {
 	c := new(dns.Client)
-	c.Net = proto
 	for _, suffix := range cfg.DNS {
 		if strings.HasSuffix(m.Question[0].Name, suffix) {
 			if cfg.Debug {
