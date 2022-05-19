@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package resolv
@@ -6,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/kayrus/tuncfg/log"
 
@@ -21,7 +23,7 @@ const (
 	nmGetDevices                 = nmInterface + ".GetDevices"
 	nmGetDeviceActiveConnection  = nmInterface + ".Device.ActiveConnection"
 	nmGetActiveConnectionDefault = nmInterface + ".Connection.Active.Default"
-	nmGetActiveConnectionVpn = nmInterface + ".Connection.Active.Vpn"
+	nmGetActiveConnectionVpn     = nmInterface + ".Connection.Active.Vpn"
 	nmDeviceGetAppliedConnection = nmInterface + ".Device.GetAppliedConnection"
 	nmDeviceReapply              = nmInterface + ".Device.Reapply"
 	nmDnsManagerConfiguration    = nmInterface + ".DnsManager.Configuration"
@@ -183,6 +185,17 @@ func (h *Handler) setNetworkManager() error {
 			},
 		}
 		for k := range h.nmViaResolved {
+			// set new DNS settings
+			err = obj.Call(resolveSetLinkDNS, 0, k, linkDns).Store()
+			if err != nil {
+				return fmt.Errorf("failed to set %q DNS servers: %v", h.dnsServers, err)
+			}
+		}
+
+		// FIXME: workaround for ubuntu 22.04, where NM reassigns the original DNS entries
+		time.Sleep(1*time.Second)
+		for k := range h.nmViaResolved {
+			// set new DNS settings
 			err = obj.Call(resolveSetLinkDNS, 0, k, linkDns).Store()
 			if err != nil {
 				return fmt.Errorf("failed to set %q DNS servers: %v", h.dnsServers, err)

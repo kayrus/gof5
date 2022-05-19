@@ -24,7 +24,7 @@ type Handler struct {
 	dnsSuffixes []string
 
 	// only with linux dbus based managers
-	dbusShillServicePath string
+	dbusShillServicePath  string
 	dbusNmConnectionPaths []string
 	// only with systemd-resolved
 	dnsDomains    []string
