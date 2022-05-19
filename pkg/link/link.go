@@ -82,7 +82,11 @@ func InitConnection(server string, cfg *config.Config, tlsConfig *tls.Config) (*
 	)
 	servername := strings.SplitN(server, ":", -1)[0]
 	serverport := strings.SplitN(server, ":", -1)[1]
-	log.Printf("Eggz: Server: %q", servername)
+
+        if l.debug {
+		log.Printf("Servername: %s Serverport: %s", servername, serverport)
+        }
+
 	serverIPs, err := net.LookupIP(servername)
 	if err != nil || len(serverIPs) == 0 {
 		return nil, fmt.Errorf("failed to resolve %s: %s", server, err)
