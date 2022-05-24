@@ -3,6 +3,7 @@
 ## Requirements
 
 * an application must be executed under a privileged user
+* golang
 
 ## Linux
 
