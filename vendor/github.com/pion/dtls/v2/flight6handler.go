@@ -11,7 +11,7 @@ import (
 )
 
 func flight6Parse(ctx context.Context, c flightConn, state *State, cache *handshakeCache, cfg *handshakeConfig) (flightVal, *alert.Alert, error) {
-	_, msgs, ok := cache.fullPullMap(state.handshakeRecvSequence-1,
+	_, msgs, ok := cache.fullPullMap(state.handshakeRecvSequence-1, state.cipherSuite,
 		handshakeCachePullRule{handshake.TypeFinished, cfg.initialEpoch + 1, true, false},
 	)
 	if !ok {
@@ -23,7 +23,7 @@ func flight6Parse(ctx context.Context, c flightConn, state *State, cache *handsh
 		return 0, &alert.Alert{Level: alert.Fatal, Description: alert.InternalError}, nil
 	}
 
-	// Other party retransmitted the last flight.
+	// Other party may re-transmit the last flight. Keep state to be flight6.
 	return flight6, nil, nil
 }
 
