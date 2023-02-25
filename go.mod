@@ -12,13 +12,14 @@ require (
 	github.com/pion/dtls/v2 v2.0.8
 	github.com/zaninime/go-hdlc v1.1.1
 	golang.org/x/net v0.0.0-20211020060615-d418f374d309
-	golang.org/x/sys v0.0.0-20211025201205-69cdffdb9359
+	golang.org/x/sys v0.1.0
 	gopkg.in/yaml.v2 v2.4.0
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.48
 )
 
 require (
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e // indirect
+	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/godbus/dbus/v5 v5.0.6 // indirect
 	github.com/juju/ansiterm v0.0.0-20180109212912-720a0952cc2a // indirect
 	github.com/lunixbochs/vtclean v0.0.0-20180621232353-2d01aacdc34a // indirect
