@@ -83,10 +83,6 @@ func InitConnection(server string, cfg *config.Config, tlsConfig *tls.Config) (*
 	servername := strings.SplitN(server, ":", -1)[0]
 	serverport := strings.SplitN(server, ":", -1)[1]
 
-        if l.debug {
-		log.Printf("Servername: %s Serverport: %s", servername, serverport)
-        }
-
 	serverIPs, err := net.LookupIP(servername)
 	if err != nil || len(serverIPs) == 0 {
 		return nil, fmt.Errorf("failed to resolve %s: %s", server, err)
@@ -101,8 +97,10 @@ func InitConnection(server string, cfg *config.Config, tlsConfig *tls.Config) (*
 		pppUp:       make(chan struct{}, 1),
 		tunUp:       make(chan struct{}, 1),
 		debug:       cfg.Debug,
-	}
-
+	}	
+	if l.debug {
+		log.Printf("Servername: %s Serverport: %s", servername, serverport)
+        }
 	if cfg.DTLS && cfg.F5Config.Object.TunnelDTLS {
 		s := fmt.Sprintf("%s:%s", server, cfg.F5Config.Object.TunnelPortDTLS)
 		log.Printf("Connecting to %s using DTLS", s)
