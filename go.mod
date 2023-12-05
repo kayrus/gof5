@@ -1,5 +1,7 @@
 module github.com/kayrus/gof5
 
+go 1.21
+
 require (
 	github.com/IBM/netaddr v1.5.0
 	github.com/fatih/color v1.10.0
@@ -40,5 +42,3 @@ require (
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	kernel.org/pub/linux/libs/security/libcap/psx v1.2.48 // indirect
 )
-
-go 1.17
