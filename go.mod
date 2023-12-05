@@ -11,8 +11,8 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pion/dtls/v2 v2.2.4
 	github.com/zaninime/go-hdlc v1.1.1
-	golang.org/x/net v0.5.0
-	golang.org/x/sys v0.4.0
+	golang.org/x/net v0.17.0
+	golang.org/x/sys v0.13.0
 	gopkg.in/yaml.v2 v2.4.0
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.48
 )
@@ -32,8 +32,8 @@ require (
 	github.com/sigurn/utils v0.0.0-20151230205143-f19e41f79f8f // indirect
 	github.com/vishvananda/netlink v1.1.0 // indirect
 	github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df // indirect
-	golang.org/x/crypto v0.5.0 // indirect
-	golang.org/x/term v0.4.0 // indirect
+	golang.org/x/crypto v0.14.0 // indirect
+	golang.org/x/term v0.13.0 // indirect
 	golang.zx2c4.com/wireguard v0.0.0-20211028114750-eb6302c7eb71 // indirect
 	golang.zx2c4.com/wireguard/windows v0.5.2-0.20211028141252-9fe93eaf9c4a // indirect
 	gopkg.in/fsnotify.v1 v1.4.7 // indirect
