@@ -233,7 +233,17 @@ func (l *vpnLink) configureDNS(cfg *config.Config) error {
 
 	if len(cfg.DNS) > 0 && !l.resolvHandler.IsResolve() {
 		// combine local network search with VPN gateway search
-		dnsSuffixes = append(l.resolvHandler.GetOriginalSuffixes(), cfg.F5Config.Object.DNSSuffix...)
+		dnsSuffixes = l.resolvHandler.GetOriginalSuffixes()
+		existingSuffixes := make(map[string]bool)
+		for _, existingSuffix := range dnsSuffixes {
+			existingSuffixes[existingSuffix] = true
+		}
+
+		for _, newSuffix := range cfg.F5Config.Object.DNSSuffix {
+			if !existingSuffixes[newSuffix] {
+				dnsSuffixes = append(dnsSuffixes, newSuffix)
+			}
+		}
 		l.resolvHandler.SetSuffixes(dnsSuffixes)
 	}
 
