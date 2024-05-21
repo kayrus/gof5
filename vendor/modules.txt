@@ -101,7 +101,7 @@ github.com/vishvananda/netns
 # github.com/zaninime/go-hdlc v1.1.1
 ## explicit; go 1.12
 github.com/zaninime/go-hdlc
-# golang.org/x/crypto v0.17.0
+# golang.org/x/crypto v0.21.0
 ## explicit; go 1.18
 golang.org/x/crypto/cryptobyte
 golang.org/x/crypto/cryptobyte/asn1
@@ -109,21 +109,21 @@ golang.org/x/crypto/curve25519
 golang.org/x/crypto/curve25519/internal/field
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/ssh/terminal
-# golang.org/x/net v0.17.0
-## explicit; go 1.17
+# golang.org/x/net v0.23.0
+## explicit; go 1.18
 golang.org/x/net/bpf
 golang.org/x/net/internal/iana
 golang.org/x/net/internal/socket
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
 golang.org/x/net/route
-# golang.org/x/sys v0.15.0
+# golang.org/x/sys v0.18.0
 ## explicit; go 1.18
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-# golang.org/x/term v0.15.0
+# golang.org/x/term v0.18.0
 ## explicit; go 1.18
 golang.org/x/term
 # golang.zx2c4.com/wireguard v0.0.0-20211028114750-eb6302c7eb71
