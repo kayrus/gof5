@@ -153,6 +153,12 @@ dns:
 - .corp.
 # for reverse DNS lookup
 - .in-addr.arpa.
+# override DNS servers, provided by a VPN server profile
+overrideDNS:
+- 8.8.8.8
+# override DNS search suffix, provided by a VPN server profile
+overrideDNSSuffix:
+- my.corp
 # A list of subnets to be routed via VPN
 # When not set, the routes pushed from F5 will be used
 # Use "routes: []", if you don't want gof5 to manage routes at all

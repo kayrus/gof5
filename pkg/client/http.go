@@ -342,15 +342,24 @@ func getProfiles(c *http.Client, server string) (*http.Response, error) {
 	return c.Do(req)
 }
 
-func getConnectionOptions(c *http.Client, server string, profile string) (*config.Favorite, error) {
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s/vdesk/vpn/connect.php3?%s&outform=xml&client_version=2.0", server, profile), nil)
+func getConnectionOptions(c *http.Client, opts *Options, profile string) (*config.Favorite, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s/vdesk/vpn/connect.php3?%s&outform=xml&client_version=2.0", opts.Server, profile), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build a request: %s", err)
 	}
 	req.Header.Set("User-Agent", userAgent)
 	resp, err := c.Do(req)
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to read a request: %s", err)
+		log.Printf("Failed to read a request: %s", err)
+		log.Printf("Override link DNS values from config")
+		return &config.Favorite{
+			Object: config.Object{
+				SessionID: opts.SessionID,
+				DNS:       opts.Config.OverrideDNS,
+				DNSSuffix: opts.Config.OverrideDNSSuffix,
+			},
+		}, nil
 	}
 
 	// parse profile
@@ -360,6 +369,17 @@ func getConnectionOptions(c *http.Client, server string, profile string) (*confi
 	resp.Body.Close()
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal a response: %s", err)
+	}
+
+	// override link options
+	if favorite.Object.SessionID == "" {
+		favorite.Object.SessionID = opts.SessionID
+	}
+	if len(opts.Config.OverrideDNS) > 0 {
+		favorite.Object.DNS = opts.Config.OverrideDNS
+	}
+	if len(opts.Config.OverrideDNSSuffix) > 0 {
+		favorite.Object.DNSSuffix = opts.Config.OverrideDNSSuffix
 	}
 
 	return &favorite, nil

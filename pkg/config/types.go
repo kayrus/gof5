@@ -15,15 +15,17 @@ import (
 )
 
 type Config struct {
-	Debug       bool           `yaml:"-"`
-	Driver      string         `yaml:"driver"`
-	ListenDNS   net.IP         `yaml:"-"`
-	DNS         []string       `yaml:"dns"`
-	Routes      *netaddr.IPSet `yaml:"-"`
-	PPPdArgs    []string       `yaml:"pppdArgs"`
-	InsecureTLS bool           `yaml:"insecureTLS"`
-	DTLS        bool           `yaml:"dtls"`
-	IPv6        bool           `yaml:"ipv6"`
+	Debug             bool           `yaml:"-"`
+	Driver            string         `yaml:"driver"`
+	ListenDNS         net.IP         `yaml:"-"`
+	DNS               []string       `yaml:"dns"`
+	OverrideDNS       []net.IP       `yaml:"-"`
+	OverrideDNSSuffix []string       `yaml:"overrideDNSSuffix"`
+	Routes            *netaddr.IPSet `yaml:"-"`
+	PPPdArgs          []string       `yaml:"pppdArgs"`
+	InsecureTLS       bool           `yaml:"insecureTLS"`
+	DTLS              bool           `yaml:"dtls"`
+	IPv6              bool           `yaml:"ipv6"`
 	// completely disable DNS servers handling
 	DisableDNS bool `yaml:"disableDNS"`
 	// rewrite /etc/resolv.conf instead of renaming
@@ -47,9 +49,10 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type tmp Config
 	var s struct {
 		tmp
-		ListenDNS *string  `yaml:"listenDNS"`
-		Routes    []string `yaml:"routes"`
-		PPPdArgs  []string `yaml:"pppdArgs"`
+		ListenDNS   *string  `yaml:"listenDNS"`
+		Routes      []string `yaml:"routes"`
+		PPPdArgs    []string `yaml:"pppdArgs"`
+		OverrideDNS []string `yaml:"overrideDNS"`
 	}
 
 	if err := unmarshal(&s.tmp); err != nil {
@@ -73,6 +76,10 @@ func (r *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			return err
 		}
 		r.Routes = subnetsToIPSet(parsedCIDRs)
+	}
+
+	if len(s.OverrideDNS) > 0 {
+		r.OverrideDNS = processIPs(strings.Join(s.OverrideDNS, " "), net.IPv4len)
 	}
 
 	// default pppd arguments
@@ -124,7 +131,7 @@ func strToBool(s string) (Bool, error) {
 	switch v := strings.ToLower(s); v {
 	case "yes":
 		return true, nil
-	case "no":
+	case "no", "":
 		return false, nil
 	}
 	return false, fmt.Errorf("cannot parse boolean: %s", s)

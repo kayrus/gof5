@@ -20,6 +20,7 @@ import (
 )
 
 type Options struct {
+	config.Config
 	Server        string
 	Username      string
 	Password      string
@@ -67,6 +68,7 @@ func Connect(opts *Options) error {
 	if err != nil {
 		return err
 	}
+	opts.Config = *cfg
 
 	switch cfg.Renegotiation {
 	case "RenegotiateOnceAsClient":
@@ -158,7 +160,7 @@ func Connect(opts *Options) error {
 	}
 
 	// read config, returned by F5
-	cfg.F5Config, err = getConnectionOptions(client, opts.Server, profile)
+	cfg.F5Config, err = getConnectionOptions(client, opts, profile)
 	if err != nil {
 		return fmt.Errorf("failed to get VPN connection options: %s", err)
 	}
