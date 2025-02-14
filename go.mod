@@ -1,6 +1,6 @@
 module github.com/kayrus/gof5
 
-go 1.21
+go 1.23
 
 require (
 	github.com/IBM/netaddr v1.5.0
@@ -13,7 +13,7 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pion/dtls/v2 v2.2.4
 	github.com/zaninime/go-hdlc v1.1.1
-	golang.org/x/net v0.23.0
+	golang.org/x/net v0.33.0
 	golang.org/x/sys v0.28.0
 	gopkg.in/yaml.v2 v2.4.0
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.48

@@ -16,7 +16,7 @@ endif
 export CGO_ENABLED:=1
 
 build: fmt vet
-	$(foreach GOARCH,$(GOARCHs),$(shell GOARCH=$(GOARCH) go build -mod=vendor -ldflags="$(LDFLAGS)" -trimpath -o bin/$(APP_NAME)_$(GOOS)_$(GOARCH)$(SUFFIX) ./cmd/gof5))
+	$(foreach GOARCH,$(GOARCHs),$(shell GOARCH=$(GOARCH) go build -ldflags="$(LDFLAGS)" -trimpath -o bin/$(APP_NAME)_$(GOOS)_$(GOARCH)$(SUFFIX) ./cmd/gof5))
 
 docker:
 	docker pull golang:latest
@@ -26,13 +26,10 @@ fmt:
 	gofmt -s -w cmd pkg
 
 vet:
-	go vet -mod=vendor ./...
+	go vet ./...
 
 static:
 	staticcheck ./cmd/... ./pkg/...
-
-mod:
-	go mod vendor
 
 test:
 	go test -v ./cmd/... ./pkg/...
