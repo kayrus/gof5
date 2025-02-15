@@ -61,6 +61,12 @@ func main() {
 		fatal(err)
 	}
 
+	if flag.NArg() > 0 {
+		if err := client.UrlHandlerF5Vpn(&opts, flag.Arg(0)); err != nil {
+			fatal(err)
+		}
+	}
+
 	if err := client.Connect(&opts); err != nil {
 		fatal(err)
 	}
