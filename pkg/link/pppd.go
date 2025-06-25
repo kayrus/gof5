@@ -138,7 +138,7 @@ func (l *vpnLink) PppdLogParser(stderr io.Reader) {
 		if strings.Contains(str, "remote IP address") {
 			close(l.pppUp)
 		}
-		colorlog.Printf(color.HiGreenString(str))
+		colorlog.Print(color.HiGreenString(str))
 	}
 }
 
@@ -169,6 +169,6 @@ func (l *vpnLink) PppLogParser() {
 		if strings.Contains(str, "IPCP: myaddr") {
 			close(l.pppUp)
 		}
-		colorlog.Printf(color.HiGreenString(str))
+		colorlog.Print(color.HiGreenString(str))
 	}
 }

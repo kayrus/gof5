@@ -360,7 +360,7 @@ func (l *vpnLink) WaitAndConfig(cfg *config.Config) {
 	}
 	l.routeHandler.Add()
 
-	colorlog.Printf(color.HiGreenString("Connection established"))
+	colorlog.Print(color.HiGreenString("Connection established"))
 }
 
 // restore config

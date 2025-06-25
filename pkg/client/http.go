@@ -118,7 +118,7 @@ func generateClientData(cData config.ClientData) (string, error) {
 		Hostname:   "test",
 	}
 
-	log.Printf(cData.Token)
+	log.Print(cData.Token)
 
 	data, err := xml.Marshal(info)
 	if err != nil {

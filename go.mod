@@ -1,7 +1,6 @@
 module github.com/kayrus/gof5
 
-go 1.23
-toolchain go1.24.1
+go 1.24
 
 require (
 	github.com/IBM/netaddr v1.5.0
