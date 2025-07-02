@@ -1,0 +1,60 @@
+version: 2
+builds:
+  - id: ubuntu-latest
+    main: ./cmd/gof5
+    goos: [linux]
+    goarch: [amd64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.Version=v{{ .Version }}
+    env:
+      - CGO_ENABLED=1
+
+  - id: windows-latest
+    main: ./cmd/gof5
+    goos: [windows]
+    goarch: [amd64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.Version=v{{ .Version }}
+    env:
+      - CGO_ENABLED=1
+
+  - id: macos-13
+    main: ./cmd/gof5
+    goos: [darwin]
+    goarch: [amd64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.Version=v{{ .Version }}
+    env:
+      - CGO_ENABLED=1
+
+  - id: macos-latest
+    main: ./cmd/gof5
+    goos: [darwin]
+    goarch: [arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.Version=v{{ .Version }}
+    env:
+      - CGO_ENABLED=1
+
+archives:
+  - formats: [binary]
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  split: true
+
+release:
+  draft: true
+  use_existing_draft: true
+  replace_existing_draft: false
+
+changelog:
+  disable: true

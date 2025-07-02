@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+  push:
+    tags:
+      - v*
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest, macos-13]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag != '' && format('refs/tags/{0}', github.event.inputs.tag) || github.ref }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Setup yq
+        if: runner.os == 'Windows'
+        uses: dcarbone/install-yq-action@v1
+
+      - name: Copy goreleaser config to temp location
+        run: cp .goreleaser.yml ${{ runner.temp }}/.goreleaser.yml
+      - name: Override builds in copied config
+        run: yq${{ runner.os == 'Windows' && '.exe' || '' }} -i eval '.builds |= map(select(.id == "${{ matrix.os }}"))' ${{ runner.temp }}/.goreleaser.yml
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          args: release --clean --config ${{ runner.temp }}/.goreleaser.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ github.event.inputs.tag != '' && github.event.inputs.tag || '' }}
