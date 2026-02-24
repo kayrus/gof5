@@ -30,6 +30,7 @@ type Options struct {
 	Key           string
 	CloseSession  bool
 	Debug         bool
+	PPPDebug      bool
 	Sel           bool
 	Version       bool
 	ProfileIndex  int

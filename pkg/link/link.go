@@ -52,6 +52,7 @@ type vpnLink struct {
 	mtu           []byte
 	mtuInt        uint16
 	debug         bool
+	pppDebug      bool
 	routeHandler  *route.Handler
 	resolvHandler *resolv.Handler
 }
@@ -94,6 +95,7 @@ func InitConnection(server string, cfg *config.Config, tlsConfig *tls.Config) (*
 		pppUp:       make(chan struct{}, 1),
 		tunUp:       make(chan struct{}, 1),
 		debug:       cfg.Debug,
+		pppDebug:    cfg.PPPDebug,
 	}
 
 	if cfg.DTLS && cfg.F5Config.Object.TunnelDTLS {

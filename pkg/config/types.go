@@ -16,6 +16,7 @@ import (
 
 type Config struct {
 	Debug             bool           `yaml:"-"`
+	PPPDebug          bool           `yaml:"-"`
 	Driver            string         `yaml:"driver"`
 	ListenDNS         net.IP         `yaml:"-"`
 	DNS               []string       `yaml:"dns"`

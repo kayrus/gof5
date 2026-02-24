@@ -40,6 +40,7 @@ func main() {
 	flag.StringVar(&opts.Key, "key", "", "Path to a user TLS key")
 	flag.BoolVar(&opts.CloseSession, "close-session", false, "Close HTTPS VPN session on exit")
 	flag.BoolVar(&opts.Debug, "debug", false, "Show debug logs")
+	flag.BoolVar(&opts.PPPDebug, "ppp-debug", false, "Show detailed PPP protocol debugging logs")
 	flag.BoolVar(&opts.Sel, "select", false, "Select a server from available F5 servers")
 	flag.IntVar(&opts.ProfileIndex, "profile-index", 0, "If multiple VPN profiles are found chose profile n")
 	flag.BoolVar(&version, "version", false, "Show version and exit cleanly")
