@@ -1,0 +1,23 @@
+name: Go Unit Tests
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  golang-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run tests
+        run: go test ./... -v
