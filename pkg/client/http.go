@@ -108,6 +108,13 @@ func checkRedirect(c *http.Client) func(*http.Request, []*http.Request) error {
 	}
 }
 
+// 64-byte HMAC key
+var hmacKey, _ = hex.DecodeString(
+	"4342a2ee5e546d98bd24e014218c8b8d" +
+	"c18531bd538c4694b720043435367edb" +
+	"f5dd67a9f6da42b58d28b27710c39b1a" +
+	"b4cb386acdae4e08bd328d8a45b0b082")
+
 func generateClientData(cData config.ClientData) (string, error) {
 	info := config.AgentInfo{
 		Type:       "standalone",
@@ -118,21 +125,15 @@ func generateClientData(cData config.ClientData) (string, error) {
 		Hostname:   "test",
 	}
 
-	log.Print(cData.Token)
-
 	data, err := xml.Marshal(info)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal agent info: %s", err)
 	}
 
 	if info.AppID == "" {
-		// put appid to the end, when it is empty
 		r := regexp.MustCompile("></agent_info>")
 		data = []byte(r.ReplaceAllString(string(data), "><app_id></app_id></agent_info>"))
 	}
-
-	// signature must be this, when token is "1"
-	t := "4sY+pQd3zrQ5c2Fl5BwkBg=="
 
 	values := &bytes.Buffer{}
 	values.WriteString("session=&")
@@ -140,43 +141,14 @@ func generateClientData(cData config.ClientData) (string, error) {
 	values.WriteString("agent_result=&")
 	values.WriteString("token=" + cData.Token)
 
-	// TODO: figure out how to calculate signature
-	// signature is calculated using cData.Token and UserAgent as a secret key
-	// 16 bytes, most probably HMAC-MD5
-	hmacMd5 := hmac.New(md5.New, []byte(cData.Token))
+	// HMAC-MD5 with the 64-byte key
+	h := hmac.New(md5.New, hmacKey)
+	h.Write(values.Bytes())
+	sig := base64.StdEncoding.EncodeToString(h.Sum(nil))
 
-	// write XML into HMAC calc
-	hmacMd5.Write(values.Bytes())
-	sig := hmacMd5.Sum(nil)
+	values.WriteString("&signature=" + sig)
 
-	log.Printf("HMAC of the values: %x", sig)
-
-	hmacMd5 = hmac.New(md5.New, []byte(cData.Token))
-
-	// write XML into HMAC calc
-	hmacMd5.Write(data)
-	sig = hmacMd5.Sum(nil)
-	log.Printf("HMAC of the data: %x", sig)
-
-	log.Printf("Simple hash of the values: %x", md5.Sum(values.Bytes()))
-	log.Printf("Simple hash of the data: %x", md5.Sum(data))
-
-	//hmacMd5.Write([]byte(base64.StdEncoding.EncodeToString(data)))
-
-	s, _ := base64.StdEncoding.DecodeString(t)
-	expected := hex.EncodeToString(s)
-
-	if v := hex.EncodeToString(sig); v != expected {
-		log.Printf("Signature %q doesn't correspond to %q", v, expected)
-	}
-
-	// Uncomment this to pass the test
-	//values.WriteString("signature=" + t)
-	values.WriteString("&signature=" + base64.StdEncoding.EncodeToString(sig))
-
-	clientData := base64.StdEncoding.EncodeToString(values.Bytes())
-
-	return clientData, nil
+	return base64.StdEncoding.EncodeToString(values.Bytes()), nil
 }
 
 func loginSignature(c *http.Client, server string, _, _ *string) error {
