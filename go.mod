@@ -34,7 +34,7 @@ require (
 	github.com/sigurn/utils v0.0.0-20151230205143-f19e41f79f8f // indirect
 	github.com/vishvananda/netlink v1.1.0 // indirect
 	github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df // indirect
-	golang.org/x/crypto v0.51.0 // indirect
+	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/term v0.43.0 // indirect
 	golang.zx2c4.com/wireguard v0.0.0-20211028114750-eb6302c7eb71 // indirect
 	golang.zx2c4.com/wireguard/windows v0.5.2-0.20211028141252-9fe93eaf9c4a // indirect
