@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -79,8 +80,10 @@ func InitConnection(server string, cfg *config.Config, tlsConfig *tls.Config) (*
 		config.Bool(cfg.IPv6 && bool(cfg.F5Config.Object.IPv6)),
 		cfg.F5Config.Object.UrZ,
 	)
+	servername := strings.SplitN(server, ":", -1)[0]
+	serverport := strings.SplitN(server, ":", -1)[1]
 
-	serverIPs, err := net.LookupIP(server)
+	serverIPs, err := net.LookupIP(servername)
 	if err != nil || len(serverIPs) == 0 {
 		return nil, fmt.Errorf("failed to resolve %s: %s", server, err)
 	}
@@ -94,8 +97,10 @@ func InitConnection(server string, cfg *config.Config, tlsConfig *tls.Config) (*
 		pppUp:       make(chan struct{}, 1),
 		tunUp:       make(chan struct{}, 1),
 		debug:       cfg.Debug,
-	}
-
+	}	
+	if l.debug {
+		log.Printf("Servername: %s Serverport: %s", servername, serverport)
+        }
 	if cfg.DTLS && cfg.F5Config.Object.TunnelDTLS {
 		s := fmt.Sprintf("%s:%s", server, cfg.F5Config.Object.TunnelPortDTLS)
 		log.Printf("Connecting to %s using DTLS", s)
@@ -111,12 +116,12 @@ func InitConnection(server string, cfg *config.Config, tlsConfig *tls.Config) (*
 		}
 		l.HTTPConn, err = dtls.Dial("udp", addr, conf)
 		if err != nil {
-			return nil, fmt.Errorf("failed to dial %s:%s: %s", server, cfg.F5Config.Object.TunnelPortDTLS, err)
+			return nil, fmt.Errorf("failed to dial %s:%s: %s", servername, cfg.F5Config.Object.TunnelPortDTLS, err)
 		}
 	} else {
-		l.HTTPConn, err = tls.Dial("tcp", fmt.Sprintf("%s:443", server), tlsConfig)
+		l.HTTPConn, err = tls.Dial("tcp", fmt.Sprintf("%s:%s", servername, serverport), tlsConfig)
 		if err != nil {
-			return nil, fmt.Errorf("failed to dial %s:443: %s", server, err)
+			return nil, fmt.Errorf("failed to dial %s:%s: %s", servername, serverport, err)
 		}
 	}
 
